@@ -54,23 +54,24 @@ class Wav2Vec(nn.Module):
 class APC(nn.Module):
     def __init__(self):
         super(APC, self).__init__()
-        
         # First we take the apc model
         self.backbone_model = getattr(hub, "apc")()
         # setting require grad = true only if we want to fine tune the pretrained model
         for name, param in self.backbone_model.named_parameters(): param.requires_grad = False
         
     def forward(self, x, norm="nonorm", length=None):
+        # 1. if input is train with variable length
         new_x = list()
         if length is not None:
              for idx in range(len(length)):
                 new_x.append(x[idx][:length[idx]])
+        # 2. infer hidden states
         with torch.no_grad():
             if length is not None: feat = self.backbone_model(new_x)['hidden_states']
             else: feat = self.backbone_model(x)['hidden_states']
-        # stacked feature
-        stacked_feature = torch.stack(feat, dim=0)[-1]
-        # get length and feature
+        # 3. stacked feature
+        stacked_feature = torch.stack(feat, dim=0)
+        # 4. get length and feature
         if length is not None:
             length = self.get_feat_extract_output_lengths(length.detach().cpu())
             mask = prepare_mask(length, feat[0].shape[:2], x.dtype)
