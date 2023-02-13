@@ -83,14 +83,14 @@ def parse_finetune_args():
 
     parser.add_argument(
         '--model_dir', 
-        default='/media/data/projects/speech-privacy/emo2vec/model',
+        default='/media/data/projects/speech-privacy/trust-ser/model',
         type=str, 
         help='model save path'
     )
 
     parser.add_argument(
         '--log_dir', 
-        default='/media/data/projects/speech-privacy/emo2vec/finetune',
+        default='/media/data/projects/speech-privacy/trust-ser/finetune',
         type=str, 
         help='model save path'
     )
@@ -98,7 +98,7 @@ def parse_finetune_args():
     
     parser.add_argument(
         '--pretrain_model', 
-        default='wav2vec2_0_original',
+        default='wav2vec2_0',
         type=str,
         help="pretrained model type"
     )
@@ -189,7 +189,7 @@ def parse_finetune_args():
 
     parser.add_argument(
         '--hidden_size',
-        default=128,
+        default=256,
         type=int,
         help="hidden size",
     )
@@ -199,6 +199,13 @@ def parse_finetune_args():
         default='att',
         type=str,
         help="pooling method: att, average",
+    )
+
+    parser.add_argument(
+        '--norm',
+        default='nonorm',
+        type=str,
+        help="normalization or not",
     )
     
     args = parser.parse_args()

@@ -125,31 +125,23 @@ class PretrainDatasetGenerator(Dataset):
 
 def collate_fn(batch):
     # max of 6s of data
-    max_audio_len = min(max([(b[0].shape[0]//320)*320 for b in batch]), 16000*6)
-    max_frames = min(max([b[0].shape[0]//320-1 for b in batch]), 299)
-    data, len_data, taregt, attention = list(), list(), list(), list()
+    max_audio_len = min(max([b[0].shape[0] for b in batch]), 16000*6)
+    data, len_data, taregt = list(), list(), list()
     for idx in range(len(batch)):
         # append data
         data.append(padding_cropping(batch[idx][0], max_audio_len))
         
         # append len
-        num_frames = len((batch[idx][0])) // 320
-        if num_frames >= max_frames: num_frames = max_frames
-        len_data.append(torch.tensor(num_frames))
-
-        # append masking
-        attent_mask = torch.zeros(max_frames)
-        attent_mask[num_frames-1:] = -10000
-        attention.append(attent_mask)
+        if len((batch[idx][0])) >= max_audio_len: len_data.append(torch.tensor(max_audio_len))
+        else: len_data.append(torch.tensor(len((batch[idx][0]))))
         
         # append target
         taregt.append(torch.tensor(batch[idx][1]))
     
     data = torch.stack(data, dim=0)
     len_data = torch.stack(len_data, dim=0)
-    attention = torch.stack(attention, dim=0)
     taregt = torch.stack(taregt, dim=0)
-    return data, taregt, len_data, attention
+    return data, taregt, len_data
 
 def padding_cropping(
     input_wav, size
@@ -260,7 +252,7 @@ def map_label(
         "crema_d": {"N": 0, "A": 1, "S": 2, "H": 3},
         "crema_d_complete": {"N": 0, "A": 1, "S": 2, "H": 3, "F": 4, "D": 5},
     }
-    if dataset in ["iemocap", "msp-improv", "msp-podcast", "meld", "crema_d", "iemocap_impro"]:
+    if dataset in ["iemocap", "msp-improv", "msp-podcast", "meld", "crema_d", "iemocap_impro", "crema_d_complete"]:
         return label_dict[dataset][data[-1]]
     if dataset in ["cmu-mosei"]:
         # if data[-1] == 0: return 0
@@ -363,6 +355,8 @@ def load_finetune_audios(
     train_file_list, dev_file_list, test_file_list = list(), list(), list()
     if dataset in ["iemocap_impro"]:
         with open(str(Path(input_path).joinpath(f'iemocap.json')), "r") as f: split_dict = json.load(f)
+    elif dataset in ["crema_d_complete"]:
+        with open(str(Path(input_path).joinpath(f'crema_d.json')), "r") as f: split_dict = json.load(f)
     else:
         with open(str(Path(input_path).joinpath(f'{dataset}.json')), "r") as f: split_dict = json.load(f)
     
@@ -398,6 +392,9 @@ def return_weights(
     if dataset in ["iemocap_impro"]:
         with open(str(Path(input_path).joinpath(f'iemocap.json')), "r") as f:
             split_dict = json.load(f)
+    elif dataset in ["crema_d_complete"]:
+        with open(str(Path(input_path).joinpath(f'crema_d.json')), "r") as f:
+            split_dict = json.load(f)
     else:
         with open(str(Path(input_path).joinpath(f'{dataset}.json')), "r") as f:
             split_dict = json.load(f)
@@ -413,6 +410,14 @@ def return_weights(
     weights = torch.tensor([weights_stats[c] for c in range(len(weights_stats))]).float()
     weights = weights.sum() / weights
     weights = weights / weights.sum()
+    """
+    beta = 0.9999
+    cls_num_list = [weights_stats[c] for c in range(len(weights_stats))]
+    effective_num = 1.0 - np.power(beta, cls_num_list)
+    weights = (1.0 - beta) / np.array(effective_num)
+    weights = weights / np.sum(weights) * len(cls_num_list)
+    weights = torch.FloatTensor(weights).float()
+    """
     return weights
     
 def set_dataloader(
@@ -562,7 +567,3 @@ def set_finetune_dataloader(
                 drop_last=is_train
             )
     return dataloader
-
-
-
-

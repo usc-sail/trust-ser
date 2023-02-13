@@ -21,21 +21,22 @@ logging.basicConfig(
 if __name__ == '__main__':
 
     # data path
-    split_path = Path('/media/data/projects/speech-privacy/emo2vec/train_split')
-    audio_path = Path('/media/data/projects/speech-privacy/emo2vec/audio')
+    split_path = Path('/media/data/projects/speech-privacy/trust-ser/train_split')
+    audio_path = Path('/media/data/projects/speech-privacy/trust-ser/audio')
 
     # read splits
     # for dataset in ['iemocap']:
-    # for dataset in ['msp-improv']:
+    for dataset in ['msp-improv']:
     # for dataset in ['meld']:
     # for dataset in ['crema_d']:
     # for dataset in ['ravdess']:
     # for dataset in ['emov_db']:
-    for dataset in ['vox-movie']:
+    # for dataset in ['vox-movie']:
     # for dataset in ['msp-podcast']:
     # for dataset in ['cmu-mosei']:
-        with open(str(split_path.joinpath(f'{dataset}.json')), "r") as f:
-            split_dict = json.load(f)
+        if dataset in ["iemocap", "crema_d", "ravdess", "msp-improv"]:
+            with open(str(split_path.joinpath(f'{dataset}_fold1.json')), "r") as f:
+                split_dict = json.load(f)
         for split in ['train', 'dev', 'test']:
             Path.mkdir(audio_path.joinpath(dataset, split), parents=True, exist_ok=True)
             # for idx, data in tqdm(enumerate(), ncols=10, miniters=10):

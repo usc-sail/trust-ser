@@ -20,7 +20,7 @@ if __name__ == '__main__':
 
     # data path
     data_path = Path('/media/data/sail-data/MSP-podcast')
-    output_path = Path('/media/data/projects/speech-privacy/emo2vec')
+    output_path = Path('/media/data/projects/speech-privacy/trust-ser')
 
     Path.mkdir(output_path.joinpath('train_split'), parents=True, exist_ok=True)
     # train_list, dev_list, test1_list, test2_list = list(), list(), list(), list()
@@ -46,7 +46,8 @@ if __name__ == '__main__':
         session_id = label_df.loc[file_name, "Split_Set"]
         
         # [key, speaker id, gender, path, label]
-        file_data = [file_name, f'msp_podcast_{speaker_id}', gender, str(file_path), label]
+        gender_label = "female" if gender == "Female" else "male"
+        file_data = [file_name, f'msp_podcast_{speaker_id}', gender_label, str(file_path), label]
 
         # append data
         if session_id == 'Test1': test_list.append(file_data)
@@ -60,8 +61,7 @@ if __name__ == '__main__':
     logging.info(f'-------------------------------------------------------')
     logging.info(f'Split distribution for MSP-podcast dataset')
     # for split in ['train', 'dev', 'test1', 'test2']:
-    for split in ['train', 'dev', 'test']:
-        logging.info(f'Split {split}: Number of files {len(return_dict[split])}')
+    for split in ['train', 'dev', 'test']: logging.info(f'Split {split}: Number of files {len(return_dict[split])}')
     logging.info(f'-------------------------------------------------------')
     
     # dump the dictionary

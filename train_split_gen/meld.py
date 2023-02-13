@@ -63,7 +63,7 @@ if __name__ == '__main__':
 
     # data path
     data_path = Path('/media/data/public-data/SER/meld/MELD.Raw/')
-    output_path = Path('/media/data/projects/speech-privacy/emo2vec')
+    output_path = Path('/media/data/projects/speech-privacy/trust-ser')
 
     Path.mkdir(output_path.joinpath('train_split'), parents=True, exist_ok=True)
     train_list, dev_list, test_list = list(), list(), list()

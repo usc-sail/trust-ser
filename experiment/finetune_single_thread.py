@@ -24,8 +24,8 @@ from utils import parse_finetune_args, set_seed, log_epoch_result, log_best_resu
 
 # from utils
 from evaluation import EvalMetric
-from wav2vec import Wav2VecComplete, Wav2VecFinetune, Wav2Vec
-from downstream_models import DNNClassifier, CNNSelfAttention, RNNClassifier
+from pretrained_backbones import Wav2Vec, APC
+from downstream_models import DNNClassifier, CNNSelfAttention
 from dataloader import load_finetune_audios, set_finetune_dataloader, return_weights
 
 # define logging console
@@ -35,6 +35,17 @@ logging.basicConfig(
     level=logging.INFO, 
     datefmt='%Y-%m-%d %H:%M:%S'
 )
+
+# model basic information
+hid_dim_dict = {
+    "wav2vec2_0":   768,
+    "apc":          512,
+}
+
+num_enc_layers_dict = {
+    "wav2vec2_0":   12,
+    "apc":          3,
+}
 
 def train_epoch(
     dataloader, 
@@ -52,13 +63,12 @@ def train_epoch(
         # read data
         model.zero_grad()
         optimizer.zero_grad()
-        x, y, l, attent_mask = batch_data
-        x, y, l, attent_mask = x.to(device), y.to(device), l.to(device), attent_mask.to(device)
+        x, y, length = batch_data
+        x, y, length = x.to(device), y.to(device), length.to(device)
         
         # forward pass
-        with torch.no_grad():
-            feat = backbone_model(x)
-        outputs = model(feat, l, attent_mask)
+        feat, length, mask = backbone_model(x, norm=args.norm, length=length)
+        outputs = model(feat, length, mask)
         outputs = torch.log_softmax(outputs, dim=1)
                     
         # backward
@@ -101,7 +111,7 @@ def validate_epoch(
             x, y = x.to(device), y.to(device)
             
             # forward pass
-            feat = backbone_model(x)
+            feat = backbone_model(x, norm=args.norm)
             outputs = model(feat)
             outputs = torch.log_softmax(outputs, dim=1)
                         
@@ -139,7 +149,9 @@ if __name__ == '__main__':
     )
     
     best_dict = dict()
-    for fold_idx in range(1, 6):
+    if args.dataset == "msp-improv": total_folds = 7
+    else: total_folds = 6
+    for fold_idx in range(1, total_folds):
         # train/dev/test dataloader
         train_dataloader = set_finetune_dataloader(
             args, train_file_list, is_train=True
@@ -158,39 +170,22 @@ if __name__ == '__main__':
         # log dir
         log_dir = Path(args.log_dir).joinpath(
             args.dataset, 
-            f'{setting_str}_lr{str(args.learning_rate).replace(".", "")}_ep{args.num_epochs}_{args.downstream_model}_conv{args.conv_layers}_{args.att}'
+            f'{setting_str}_lr{str(args.learning_rate).replace(".", "")}_ep{args.num_epochs}_{args.downstream_model}_conv{args.conv_layers}_hid{args.hidden_size}_{args.pooling}_{args.norm}'
         )
         Path.mkdir(log_dir, parents=True, exist_ok=True)
         
         # set seeds
         set_seed(8*fold_idx)
         # Define the model
-        if args.pretrain_model == "wav2vec2_0_original":
+        if args.pretrain_model == "wav2vec2_0":
             # original wav2vec model
             backbone_model = Wav2Vec().to(device)
-        elif args.pretrain_model == "wav2vec2_0":
+        elif args.pretrain_model == "apc":
             # CUDA_VISIBLE_DEVICES=1 python3 finetune_single_thread.py --pretrain_model wav2vec2_0
-            # wav2vec pretrained with speech data
-            backbone_model = Wav2Vec().to(device)
-            backbone_dict = backbone_model.state_dict()
-            
-            # 1. filter out unnecessary keys
-            pretrained_dict = torch.load(str(pretrained_model_path), map_location=device)["model_state_dict"]
-            backbone_pretrained_dict = {
-                k.replace("module.model", "backbone_model"): v for k, v in pretrained_dict.items() if "module.model" in k and "model_seq" not in k
-            }
-            # 2. overwrite entries in the existing state dict
-            backbone_dict.update(backbone_pretrained_dict)
-            # 3. load the new state dict
-            backbone_model.load_state_dict(backbone_dict)
+            backbone_model = APC().to(device)
         
         # define the downstream models
-        if args.downstream_model == "rnn":
-            if args.dataset in ["iemocap", "msp-improv", "msp-podcast", "crema_d", "meld"]:
-                model = RNNClassifier(num_class=4).to(device)
-            elif args.dataset in ["ravdess"]:
-                model = RNNClassifier(num_class=8).to(device)
-        elif args.downstream_model == "cnn":
+        if args.downstream_model == "cnn":
             # define the number of class
             if args.dataset in ["iemocap", "msp-improv", "meld", "iemocap_impro"]: num_class = 4
             elif args.dataset in ["msp-podcast"]: num_class = 4
@@ -199,9 +194,10 @@ if __name__ == '__main__':
 
             # define the models
             model = CNNSelfAttention(
-                input_dim=768, 
+                input_dim=hid_dim_dict[args.pretrain_model], 
                 output_class_num=num_class, 
                 conv_layer=args.conv_layers, 
+                num_enc_layers=num_enc_layers_dict[args.pretrain_model], 
                 pooling_method=args.pooling
             ).to(device)
         
@@ -240,13 +236,14 @@ if __name__ == '__main__':
             test_result = validate_epoch(
                 test_dataloader, model, device, split="Test"
             )
-            
+            # if we get a better results
             if best_dev_uar < dev_result["uar"]:
                 best_dev_uar = dev_result["uar"]
                 best_test_uar = test_result["uar"]
                 best_dev_acc = dev_result["acc"]
                 best_test_acc = test_result["acc"]
                 best_epoch = epoch
+                torch.save(model.state_dict(), str(log_dir.joinpath(f'fold_{fold_idx}.pt')))
             
             logging.info(f'-------------------------------------------------------------------')
             logging.info(f"Fold {fold_idx} - Best train epoch {best_epoch}, best dev UAR {best_dev_uar:.2f}%, best test UAR {best_test_uar:.2f}%")

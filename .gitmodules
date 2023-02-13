@@ -1,0 +1,3 @@
+[submodule "model/s3prl"]
+	path = model/s3prl
+	url = git@github.com:s3prl/s3prl.git
