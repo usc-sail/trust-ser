@@ -19,6 +19,12 @@ conda env create -f trust-ser.yml
 conda activate trust-ser
 ```
 
+To install the essential SUPERB audio benchmark:
+```
+cd model/s3prl
+pip3 install -e .
+```
+
 Please specify the data file to your work dir under config/config.yml
 
 ```
