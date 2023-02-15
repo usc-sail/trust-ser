@@ -22,8 +22,8 @@ if __name__ == '__main__':
     # Read data path
     with open("../config/config.yml", "r") as stream:
         config = yaml.safe_load(stream)
-    data_path   = config["data_dir"]["msp-podcast"]
-    output_path = config["project_dir"]
+    data_path   = Path(config["data_dir"]["msp-podcast"])
+    output_path = Path(config["project_dir"])
 
     Path.mkdir(output_path.joinpath('train_split'), parents=True, exist_ok=True)
     train_list, dev_list, test_list = list(), list(), list()

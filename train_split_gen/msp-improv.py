@@ -21,8 +21,8 @@ if __name__ == '__main__':
     # Read data path
     with open("../config/config.yml", "r") as stream:
         config = yaml.safe_load(stream)
-    data_path   = config["data_dir"]["msp-improv"]
-    output_path = config["project_dir"]
+    data_path   = Path(config["data_dir"]["msp-improv"])
+    output_path = Path(config["project_dir"])
 
     session_list = ['session1', 'session2', 'session3', 'session4', 'session5', 'session6']
     kf = KFold(n_splits=6, random_state=None, shuffle=False)

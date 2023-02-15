@@ -22,8 +22,8 @@ if __name__ == '__main__':
     # Read data path
     with open("../config/config.yml", "r") as stream:
         config = yaml.safe_load(stream)
-    data_path   = config["data_dir"]["crema_d"]
-    output_path = config["project_dir"]
+    data_path   = Path(config["data_dir"]["crema_d"])
+    output_path = Path(config["project_dir"])
     
     kf = KFold(n_splits=5, random_state=None, shuffle=False)
     for fold_idx, (train_index, test_index) in enumerate(kf.split(np.arange(1001, 1092, 1))):
