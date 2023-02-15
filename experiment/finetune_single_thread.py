@@ -36,7 +36,7 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# model basic information
+# Model hidden states information
 hid_dim_dict = {
     "wav2vec2_0":   768,
     "tera":         768,
@@ -44,6 +44,7 @@ hid_dim_dict = {
     "apc":          512,
 }
 
+# Model number of encoding layers
 num_enc_layers_dict = {
     "wav2vec2_0":   12,
     "wavlm":        12,
