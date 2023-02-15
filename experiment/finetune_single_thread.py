@@ -24,7 +24,7 @@ from utils import parse_finetune_args, set_seed, log_epoch_result, log_best_resu
 
 # from utils
 from evaluation import EvalMetric
-from pretrained_backbones import Wav2Vec, APC
+from pretrained_backbones import Wav2Vec, APC, TERA, WavLM
 from downstream_models import DNNClassifier, CNNSelfAttention
 from dataloader import load_finetune_audios, set_finetune_dataloader, return_weights
 
@@ -39,11 +39,15 @@ logging.basicConfig(
 # model basic information
 hid_dim_dict = {
     "wav2vec2_0":   768,
+    "tera":         768,
+    "wavlm":        768,
     "apc":          512,
 }
 
 num_enc_layers_dict = {
     "wav2vec2_0":   12,
+    "wavlm":        12,
+    "tera":         4,
     "apc":          3,
 }
 
@@ -140,18 +144,19 @@ if __name__ == '__main__':
     device = torch.device("cuda") if torch.cuda.is_available() else "cpu"
     if torch.cuda.is_available(): print('GPU available, use GPU')
     
-    # read train/dev file list
-    train_file_list, dev_file_list, test_file_list = load_finetune_audios(
-        args.data_dir, dataset=args.dataset
-    )
-    weights = return_weights(
-        args.data_dir, dataset=args.dataset
-    )
-    
     best_dict = dict()
     if args.dataset == "msp-improv": total_folds = 7
     else: total_folds = 6
     for fold_idx in range(1, total_folds):
+
+        # read train/dev file list
+        train_file_list, dev_file_list, test_file_list = load_finetune_audios(
+            args.split_dir, dataset=args.dataset, fold_idx=fold_idx
+        )
+        weights = return_weights(
+            args.split_dir, dataset=args.dataset, fold_idx=fold_idx
+        )
+    
         # train/dev/test dataloader
         train_dataloader = set_finetune_dataloader(
             args, train_file_list, is_train=True
@@ -163,14 +168,11 @@ if __name__ == '__main__':
             args, test_file_list, is_train=False
         )
 
-        # settings
-        setting_str = f'parallel_{args.pretrain_model}_bs{args.batch_size}_tp{str(args.temperature).replace(".", "")}_nc{args.num_clusters}_ad{args.audio_duration}_ft{args.num_layers}'
-        pretrained_model_path = Path(args.model_dir).joinpath(f'{setting_str}_ep19.pt')
-        
         # log dir
         log_dir = Path(args.log_dir).joinpath(
             args.dataset, 
-            f'{setting_str}_lr{str(args.learning_rate).replace(".", "")}_ep{args.num_epochs}_{args.downstream_model}_conv{args.conv_layers}_hid{args.hidden_size}_{args.pooling}_{args.norm}'
+            args.pretrain_model,
+            f'lr{str(args.learning_rate).replace(".", "")}_ep{args.num_epochs}_{args.downstream_model}_conv{args.conv_layers}_hid{args.hidden_size}_{args.pooling}'
         )
         Path.mkdir(log_dir, parents=True, exist_ok=True)
         
@@ -181,9 +183,15 @@ if __name__ == '__main__':
             # original wav2vec model
             backbone_model = Wav2Vec().to(device)
         elif args.pretrain_model == "apc":
-            # CUDA_VISIBLE_DEVICES=1 python3 finetune_single_thread.py --pretrain_model wav2vec2_0
+            # APC wrapper from superb
             backbone_model = APC().to(device)
-        
+        elif args.pretrain_model == "tera":
+            # TERA wrapper from superb
+            backbone_model = TERA().to(device)
+        elif args.pretrain_model == "wavlm":
+            # wavlm wrapper from huggingface
+            backbone_model = WavLM().to(device)
+            
         # define the downstream models
         if args.downstream_model == "cnn":
             # define the number of class

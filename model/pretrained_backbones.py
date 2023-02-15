@@ -9,7 +9,7 @@ from collections import OrderedDict
 from typing import Optional, Callable
 from torch.nn import functional as F
 from torch.nn.functional import normalize
-from transformers import Wav2Vec2Model, Wav2Vec2Config, Wav2Vec2Processor, AutoProcessor
+from transformers import Wav2Vec2Model, Wav2Vec2Config, Wav2Vec2Processor, AutoProcessor, WavLMModel
 
     
 class Wav2Vec(nn.Module):
@@ -26,16 +26,28 @@ class Wav2Vec(nn.Module):
         for name, param in self.backbone_model.named_parameters(): param.requires_grad = False
         
     def forward(self, x, norm="nonorm", length=None):
+        # 1. feature extraction and projections
         with torch.no_grad():
-            feat = self.backbone_model(x).hidden_states
-        # stacked feature
-        stacked_feature = torch.stack(feat, dim=0)
-        # get length and feature
+            x = self.backbone_model.feature_extractor(x)
+            x = x.transpose(1, 2) # New version of huggingface
+            x, _ = self.backbone_model.feature_projection(x) # New version of huggingface
+        
+        # 2. get length and mask
+        mask = None
         if length is not None:
             length = self.get_feat_extract_output_lengths(length.detach().cpu())
-            mask = prepare_mask(length, feat[0].shape[:2], x.dtype)
+            mask = prepare_mask(length, x.shape[:2], x.dtype)
             length, mask = length.cuda(), mask.cuda()
-            return stacked_feature, length, mask
+        # 3. transformer encoding features
+        with torch.no_grad():
+            feat = self.backbone_model.encoder(
+                x, attention_mask=mask, 
+                output_hidden_states=True
+            ).hidden_states
+        # 4. stacked feature
+        stacked_feature = torch.stack(feat, dim=0)[1:]
+        # 5. return feature, length and masks
+        if length is not None: return stacked_feature, length, mask
         return stacked_feature
     
     # From huggingface
@@ -87,6 +99,96 @@ class APC(nn.Module):
         def _out_length(input_length, window, stride):
             return (input_length - window) // stride + 1
         input_length = _out_length(input_length, 400, 160)
+        return input_length
+
+class TERA(nn.Module):
+    def __init__(self):
+        super(TERA, self).__init__()
+        # First we take the apc model
+        self.backbone_model = getattr(hub, "tera")()
+        # setting require grad = true only if we want to fine tune the pretrained model
+        for name, param in self.backbone_model.named_parameters(): param.requires_grad = False
+        
+    def forward(self, x, norm="nonorm", length=None):
+        # 1. if input is train with variable length
+        new_x = list()
+        if length is not None:
+             for idx in range(len(length)):
+                new_x.append(x[idx][:length[idx]])
+        # 2. infer hidden states
+        with torch.no_grad():
+            if length is not None: feat = self.backbone_model(new_x)['hidden_states']
+            else: feat = self.backbone_model(x)['hidden_states']
+        # 3. stacked feature
+        stacked_feature = torch.stack(feat, dim=0)
+        # 4. get length and feature
+        if length is not None:
+            length = self.get_feat_extract_output_lengths(length.detach().cpu())
+            mask = prepare_mask(length, feat[0].shape[:2], x.dtype)
+            length, mask = length.cuda(), mask.cuda()
+            return stacked_feature, length, mask
+        return stacked_feature
+    
+    # From huggingface
+    def get_feat_extract_output_lengths(self, input_length):
+        """
+        Computes the output length
+        """
+        def _out_length(input_length, window, stride):
+            return (input_length - window) // stride + 1
+        input_length = _out_length(input_length, 400, 160)
+        return input_length
+
+
+class WavLM(nn.Module):
+    def __init__(self):
+        super(WavLM, self).__init__()
+        
+        # First we take the pretrained xlsr model
+        self.backbone_model = WavLMModel.from_pretrained(
+            "microsoft/wavlm-base-plus",
+            output_hidden_states=True
+        )
+
+        # setting require grad = true only if we want to fine tune the pretrained model
+        for name, param in self.backbone_model.named_parameters(): param.requires_grad = False
+        
+    def forward(self, x, norm="nonorm", length=None):
+        # 1. feature extraction and projections
+        with torch.no_grad():
+            x = self.backbone_model.feature_extractor(x)
+            x = x.transpose(1, 2) # New version of huggingface
+            x, _ = self.backbone_model.feature_projection(x) # New version of huggingface
+        
+        # 2. get length and mask
+        mask = None
+        if length is not None:
+            length = self.get_feat_extract_output_lengths(length.detach().cpu())
+            mask = prepare_mask(length, x.shape[:2], x.dtype)
+            length, mask = length.cuda(), mask.cuda()
+        # 3. transformer encoding features
+        with torch.no_grad():
+            feat = self.backbone_model.encoder(
+                x, attention_mask=mask, 
+                output_hidden_states=True
+            ).hidden_states
+        # 4. stacked feature
+        stacked_feature = torch.stack(feat, dim=0)[1:]
+        # 5. return feature, length and masks
+        if length is not None: return stacked_feature, length, mask
+        return stacked_feature
+    
+    # From huggingface
+    def get_feat_extract_output_lengths(self, input_length):
+        """
+        Computes the output length of the convolutional layers
+        """
+        def _conv_out_length(input_length, kernel_size, stride):
+            # 1D convolutional layer output length formula taken
+            # from https://pytorch.org/docs/stable/generated/torch.nn.Conv1d.html
+            return (input_length - kernel_size) // stride + 1
+        for kernel_size, stride in zip(self.backbone_model.config.conv_kernel, self.backbone_model.config.conv_stride):
+            input_length = _conv_out_length(input_length, kernel_size, stride)
         return input_length
 
 

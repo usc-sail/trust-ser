@@ -20,18 +20,24 @@ class EvalMetric(object):
         self.truth_list = list()
         self.top_k_list = list()
         self.loss_list = list()
+        self.demo_list = list()
+        self.speaker_list = list()
         
     def append_classification_results(
         self, 
         labels,
         outputs,
-        loss
+        loss=None,
+        demographics=None,
+        speaker_id=None
     ):
         predictions = np.argmax(outputs.detach().cpu().numpy(), axis=1)
         for idx in range(len(predictions)):
             self.pred_list.append(predictions[idx])
             self.truth_list.append(labels.detach().cpu().numpy()[idx])
-        self.loss_list.append(loss.item())
+        if loss is not None: self.loss_list.append(loss.item())
+        if demographics is not None: self.demo_list.append(loss.item())
+        if speaker_id is not None: self.speaker_list.append(loss.item())
         
     def classification_summary(
         self, return_auc: bool=False
@@ -44,3 +50,33 @@ class EvalMetric(object):
         result_dict["loss"] = np.mean(self.loss_list)
         result_dict["sample"] = len(self.truth_list)
         return result_dict
+
+    def demographic_parity(self, y_true, y_pred, sensitive_feature):
+        """
+        Calculate demographic parity metric for multi-class labels.
+        Args:
+            y_true (array): True labels.
+            y_pred (array): Predicted labels.
+            sensitive_feature (array): Sensitive attribute.
+        Returns:
+            demographic_parity (float): Demographic parity metric.
+        """
+        # Compute the proportion of each class for each group
+        y_true = np.array(self.truth_list)
+        y_pred = np.array(self.pred_list)
+        sensitive_feature = self.demo_list
+
+        classes = np.unique(y_true)
+        prop_group1 = np.zeros(len(classes))
+        prop_group2 = np.zeros(len(classes))
+        for i, c in enumerate(classes):
+            group1 = y_pred[(sensitive_feature == "male") & (y_true == c)]
+            group2 = y_pred[(sensitive_feature == "female") & (y_true == c)]
+            prop_group1[i] = len(group1) / sum(sensitive_feature == "male")
+            prop_group2[i] = len(group2) / sum(sensitive_feature == "female")
+
+        # Compute the average difference in proportions
+        demographic_parity = np.mean(np.abs(prop_group1 - prop_group2))
+        pdb.set_trace()
+        return demographic_parity
+

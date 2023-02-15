@@ -76,7 +76,7 @@ def parse_finetune_args():
     parser = argparse.ArgumentParser(description='emo2vec finetune experiments')
     parser.add_argument(
         '--data_dir', 
-        default='/media/data/projects/speech-privacy/emo2vec/audio',
+        default='/media/data/projects/speech-privacy/trust-ser/audio',
         type=str, 
         help='raw audio path'
     )
@@ -89,8 +89,22 @@ def parse_finetune_args():
     )
 
     parser.add_argument(
+        '--split_dir', 
+        default='/media/data/projects/speech-privacy/trust-ser/train_split',
+        type=str, 
+        help='train split path'
+    )
+
+    parser.add_argument(
         '--log_dir', 
         default='/media/data/projects/speech-privacy/trust-ser/finetune',
+        type=str, 
+        help='model save path'
+    )
+
+    parser.add_argument(
+        '--fairness_dir', 
+        default='/media/data/projects/speech-privacy/trust-ser/fairness',
         type=str, 
         help='model save path'
     )

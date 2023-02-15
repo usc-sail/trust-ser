@@ -52,77 +52,6 @@ def collate_pretrain_fn(batch):
     attention = torch.stack(attention, dim=0)
     return audio1, audio2, attention
 
-class PretrainDatasetGenerator(Dataset):
-    def __init__(
-        self,
-        data_list:          list,
-        noise_list:         list,
-        data_len:           int,
-        is_train:           bool=False,
-        audio_duration:     int=2
-    ):
-        """
-        Set dataloader for pretraining.
-        :param data_list: audio list files
-        :param noise_list: audio list files
-        :param data_len: length of input audio file size
-        :param is_train: flag for dataloader, True for training; False for dev
-        :param audio_duration: max length for the audio length
-        """
-        self.data_list      = data_list
-        self.noise_list     = noise_list
-        self.data_len       = data_len
-        self.is_train       = is_train
-        self.audio_duration = audio_duration
-        
-        self.transform = Compose([
-            AddGaussianSNR(min_snr_in_db=5.0, max_snr_in_db=20.0, p=1.0),
-            AddBackgroundNoise(sounds_path=noise_list, min_snr_in_db=5.0, max_snr_in_db=20.0, noise_transform=PolarityInversion(), p=1.0),
-            TimeStretch(min_rate=0.8, max_rate=1.25, leave_length_unchanged=True, p=1.0),
-            Shift(min_fraction=-0.5, max_fraction=0.5, p=1.0),
-        ])
-
-    def __len__(self):
-        return self.data_len
-
-    def __getitem__(
-        self, item
-    ):
-        # 1. read original speech in dev
-        data, _ = torchaudio.load(self.data_list[item][3])
-        len_data_sec = int(data.shape[1] / 16000)
-        
-        # 2. select audio clip that is to the predefined audio duration
-        if len_data_sec - self.audio_duration - 1 > 0:
-            select_idx = np.random.choice(len_data_sec - self.audio_duration - 1, 1)[0]
-            data = data[:, select_idx*16000:select_idx*16000+self.audio_duration*16000]
-        else:
-            data = copy.deepcopy(data)
-        
-        # 3. apply transform
-        data = data.detach().cpu().numpy()[0]
-        audio2 = self.transform(samples=data, sample_rate=16000)
-
-        # 4. apply padding or cropping
-        audio1, audio2 = torch.tensor(data), torch.tensor(audio2)
-        if len(audio1) == 0:
-            audio1 = self._padding_cropping(audio1, 16000*self.audio_duration)
-            audio2 = self._padding_cropping(audio2, 16000*self.audio_duration)
-        if audio1.isnan()[0].item():
-            audio1 = torch.zeros(audio1.shape)
-            audio2 = torch.zeros(audio2.shape)
-        return audio1, audio2
-
-    def _padding_cropping(
-        self, input_wav, size
-    ):
-        # cropping
-        if len(input_wav) > size: input_wav = input_wav[:size]
-        # padding
-        elif len(input_wav) < size: input_wav = torch.nn.ConstantPad1d(padding=(0, size - len(input_wav)), value=0)(input_wav)
-        return input_wav
-    
-
 def collate_fn(batch):
     # max of 6s of data
     max_audio_len = min(max([b[0].shape[0] for b in batch]), 16000*6)
@@ -345,20 +274,23 @@ def load_pretrain_audios(
 
 def load_finetune_audios(
     input_path:     str,
-    dataset:        str
+    dataset:        str,
+    fold_idx:       int
 ):
     """
     Load finetune audio data.
-    :param input_path: input data path
+    :param input_path:  input data path
+    :param dataset:     dataset name
+    :param fold_idx:    fold idx
     :return train_file_list, dev_file_list: train, dev, and test file list
     """
     train_file_list, dev_file_list, test_file_list = list(), list(), list()
     if dataset in ["iemocap_impro"]:
-        with open(str(Path(input_path).joinpath(f'iemocap.json')), "r") as f: split_dict = json.load(f)
+        with open(str(Path(input_path).joinpath(f'iemocap_fold{fold_idx}.json')), "r") as f: split_dict = json.load(f)
     elif dataset in ["crema_d_complete"]:
-        with open(str(Path(input_path).joinpath(f'crema_d.json')), "r") as f: split_dict = json.load(f)
-    else:
-        with open(str(Path(input_path).joinpath(f'{dataset}.json')), "r") as f: split_dict = json.load(f)
+        with open(str(Path(input_path).joinpath(f'crema_d_fold{fold_idx}.json')), "r") as f: split_dict = json.load(f)
+    elif dataset in ["iemocap", "crema_d", "ravdess"]:
+        with open(str(Path(input_path).joinpath(f'{dataset}_fold{fold_idx}.json')), "r") as f: split_dict = json.load(f)
     
     for split in ['train', 'dev', 'test']:
         for data in split_dict[split]:
@@ -367,6 +299,13 @@ def load_finetune_audios(
                 data[-1] = map_label(data, dataset)
                 if dataset == "iemocap_impro" and "impro" not in data[0]: continue
                 
+                audio_path = Path('/media/data/projects/speech-privacy/trust-ser/audio')
+                speaker_id, file_path  = data[1], data[3]
+                if dataset in ['iemocap', 'msp-improv', 'meld', 'crema_d', 'msp-podcast']:
+                    output_path = audio_path.joinpath(dataset, file_path.split('/')[-1])
+                elif dataset in ['ravdess', 'emov_db', 'vox-movie']:
+                    output_path = audio_path.joinpath(dataset, f'{speaker_id}_{file_path.split("/")[-1]}')
+                data[3] = str(output_path)
                 if split == 'train': train_file_list.append(data)
                 elif split == 'dev': dev_file_list.append(data)
                 elif split == 'test': test_file_list.append(data)
@@ -380,23 +319,25 @@ def load_finetune_audios(
 
 def return_weights(
     input_path:     str,
-    dataset:        str
+    dataset:        str,
+    fold_idx:       int
 ):
     """
     Return training weights.
-    :param input_path: input data path
-    :param dataset: dataset name
+    :param input_path:  input data path
+    :param dataset:     dataset name
+    :param fold_idx:    fold idx
     :return weights: class weights
     """
     train_file_list = list()
     if dataset in ["iemocap_impro"]:
-        with open(str(Path(input_path).joinpath(f'iemocap.json')), "r") as f:
+        with open(str(Path(input_path).joinpath(f'iemocap_fold{fold_idx}.json')), "r") as f:
             split_dict = json.load(f)
     elif dataset in ["crema_d_complete"]:
-        with open(str(Path(input_path).joinpath(f'crema_d.json')), "r") as f:
+        with open(str(Path(input_path).joinpath(f'crema_d_fold{fold_idx}.json')), "r") as f:
             split_dict = json.load(f)
     else:
-        with open(str(Path(input_path).joinpath(f'{dataset}.json')), "r") as f:
+        with open(str(Path(input_path).joinpath(f'{dataset}_fold{fold_idx}.json')), "r") as f:
             split_dict = json.load(f)
     
     for data in split_dict['train']:
@@ -410,15 +351,21 @@ def return_weights(
     weights = torch.tensor([weights_stats[c] for c in range(len(weights_stats))]).float()
     weights = weights.sum() / weights
     weights = weights / weights.sum()
-    """
-    beta = 0.9999
-    cls_num_list = [weights_stats[c] for c in range(len(weights_stats))]
-    effective_num = 1.0 - np.power(beta, cls_num_list)
-    weights = (1.0 - beta) / np.array(effective_num)
-    weights = weights / np.sum(weights) * len(cls_num_list)
-    weights = torch.FloatTensor(weights).float()
-    """
     return weights
+
+def return_speakers(
+    input_file_list:    list
+):
+    """
+    Return training weights.
+    :param input_file_list: input file list
+    :return speakers: unique speakers
+    """
+    speaker_list = list()
+    for input_data in input_file_list: speaker_list.append(input_data[1])
+    speaker_list = list(set(speaker_list))
+    speaker_list.sort()
+    return speaker_list
     
 def set_dataloader(
     args:               dict,

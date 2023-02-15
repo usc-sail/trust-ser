@@ -60,15 +60,23 @@ class CNNSelfAttention(nn.Module):
         super(CNNSelfAttention, self).__init__()
         
         # point-wise convolution
-        self.model_seq = nn.Sequential(
-            nn.Conv1d(input_dim, hidden_dim, kernel_size, padding=padding),
-            nn.ReLU(),
-            nn.Dropout(p=dropout),
-            nn.Conv1d(hidden_dim, hidden_dim, kernel_size, padding=padding),
-            nn.ReLU(),
-            nn.Dropout(p=dropout),
-            nn.Conv1d(hidden_dim, hidden_dim, kernel_size, padding=padding),
-        )
+        if conv_layer == 3:
+            self.model_seq = nn.Sequential(
+                nn.Conv1d(input_dim, hidden_dim, kernel_size, padding=padding),
+                nn.ReLU(),
+                nn.Dropout(p=dropout),
+                nn.Conv1d(hidden_dim, hidden_dim, kernel_size, padding=padding),
+                nn.ReLU(),
+                nn.Dropout(p=dropout),
+                nn.Conv1d(hidden_dim, hidden_dim, kernel_size, padding=padding),
+            )
+        else:
+            self.model_seq = nn.Sequential(
+                nn.Conv1d(input_dim, hidden_dim, kernel_size, padding=padding),
+                nn.ReLU(),
+                nn.Dropout(p=dropout),
+                nn.Conv1d(hidden_dim, hidden_dim, kernel_size, padding=padding)
+            )
         
         self.pooling_method = pooling_method
         self.num_enc_layers = num_enc_layers
