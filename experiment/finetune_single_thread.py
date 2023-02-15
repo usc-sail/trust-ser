@@ -137,10 +137,10 @@ def validate_epoch(
 
 if __name__ == '__main__':
 
-    # argument parser
+    # Argument parser
     args = parse_finetune_args()
 
-    # find device
+    # Find device
     device = torch.device("cuda") if torch.cuda.is_available() else "cpu"
     if torch.cuda.is_available(): print('GPU available, use GPU')
     
@@ -149,15 +149,16 @@ if __name__ == '__main__':
     else: total_folds = 6
     for fold_idx in range(1, total_folds):
 
-        # read train/dev file list
+        # Read train/dev file list
         train_file_list, dev_file_list, test_file_list = load_finetune_audios(
             args.split_dir, dataset=args.dataset, fold_idx=fold_idx
         )
+        # Read weights of training data
         weights = return_weights(
             args.split_dir, dataset=args.dataset, fold_idx=fold_idx
         )
     
-        # train/dev/test dataloader
+        # Set train/dev/test dataloader
         train_dataloader = set_finetune_dataloader(
             args, train_file_list, is_train=True
         )
@@ -168,7 +169,7 @@ if __name__ == '__main__':
             args, test_file_list, is_train=False
         )
 
-        # log dir
+        # Define log dir
         log_dir = Path(args.log_dir).joinpath(
             args.dataset, 
             args.pretrain_model,
@@ -176,11 +177,12 @@ if __name__ == '__main__':
         )
         Path.mkdir(log_dir, parents=True, exist_ok=True)
         
-        # set seeds
+        # Set seeds
         set_seed(8*fold_idx)
-        # Define the model
+        
+        # Define the model wrapper
         if args.pretrain_model == "wav2vec2_0":
-            # original wav2vec model
+            # Wav2vec2_0 Wrapper
             backbone_model = Wav2Vec().to(device)
         elif args.pretrain_model == "apc":
             # APC wrapper from superb
@@ -192,15 +194,15 @@ if __name__ == '__main__':
             # wavlm wrapper from huggingface
             backbone_model = WavLM().to(device)
             
-        # define the downstream models
+        # Define the downstream models
         if args.downstream_model == "cnn":
-            # define the number of class
+            # Define the number of class
             if args.dataset in ["iemocap", "msp-improv", "meld", "iemocap_impro"]: num_class = 4
             elif args.dataset in ["msp-podcast"]: num_class = 4
             elif args.dataset in ["crema_d"]: num_class = 4
             elif args.dataset in ["ravdess"]: num_class = 7
 
-            # define the models
+            # Define the models
             model = CNNSelfAttention(
                 input_dim=hid_dim_dict[args.pretrain_model], 
                 output_class_num=num_class, 
@@ -209,12 +211,12 @@ if __name__ == '__main__':
                 pooling_method=args.pooling
             ).to(device)
         
-        # trainable params
+        # Read trainable params
         model_parameters = filter(lambda p: p.requires_grad, model.parameters())
         params = sum([np.prod(p.size()) for p in model_parameters])
         logging.info(f'Trainable params size: {params/(1024*1024):.2f} M')
         
-        # optimizer
+        # Define optimizer
         optimizer = torch.optim.Adam(
             filter(lambda p: p.requires_grad, model.parameters()), 
             lr=args.learning_rate, 
@@ -222,7 +224,7 @@ if __name__ == '__main__':
             betas=(0.9, 0.98)
         )
 
-        # scheduler, patient = 5, minimum learning rate 5e-5
+        # Define scheduler, patient = 5, minimum learning rate 5e-5
         scheduler = ReduceLROnPlateau(
             optimizer, mode='min', patience=5, factor=0.5, verbose=True, min_lr=5e-5
         )
