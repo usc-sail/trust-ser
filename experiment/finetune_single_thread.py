@@ -147,6 +147,7 @@ if __name__ == '__main__':
     best_dict = dict()
     if args.dataset == "msp-improv": total_folds = 7
     else: total_folds = 6
+    # We perform 5 folds (6 folds only on msp-improv data with 6 sessions)
     for fold_idx in range(1, total_folds):
 
         # Read train/dev file list
