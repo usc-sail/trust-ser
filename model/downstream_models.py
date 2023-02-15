@@ -12,6 +12,7 @@ from torch.nn.functional import normalize
 from torch.nn.utils.rnn import pad_packed_sequence
 from torch.nn.utils.rnn import pack_padded_sequence
 
+# The implementation was modified from SUPERB: https://github.com/s3prl/s3prl
 class SelfAttentionPooling(nn.Module):
     """
     Implementation of SelfAttentionPooling
