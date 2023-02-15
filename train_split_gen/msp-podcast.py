@@ -1,4 +1,5 @@
 import json
+import yaml
 import numpy as np
 import pandas as pd
 import pickle, pdb, re
@@ -18,12 +19,13 @@ logging.basicConfig(
 
 if __name__ == '__main__':
 
-    # data path
-    data_path = Path('/media/data/sail-data/MSP-podcast')
-    output_path = Path('/media/data/projects/speech-privacy/trust-ser')
+    # Read data path
+    with open("../config/config.yml", "r") as stream:
+        config = yaml.safe_load(stream)
+    data_path   = config["data_dir"]["msp-podcast"]
+    output_path = config["project_dir"]
 
     Path.mkdir(output_path.joinpath('train_split'), parents=True, exist_ok=True)
-    # train_list, dev_list, test1_list, test2_list = list(), list(), list(), list()
     train_list, dev_list, test_list = list(), list(), list()
     
     # msp-podcast

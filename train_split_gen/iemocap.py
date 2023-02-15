@@ -1,4 +1,5 @@
 import json
+import yaml
 import numpy as np
 import pandas as pd
 import pickle, pdb, re
@@ -17,9 +18,12 @@ logging.basicConfig(
 
 if __name__ == '__main__':
 
-    # data path
-    data_path = Path('/media/data/sail-data/iemocap/')
-    output_path = Path('/media/data/projects/speech-privacy/trust-ser')
+    # Read data path
+    with open("../config/config.yml", "r") as stream:
+        config = yaml.safe_load(stream)
+    data_path   = config["data_dir"]["iemocap"]
+    output_path = config["project_dir"]
+
     session_list = ['Session1', 'Session2', 'Session3', 'Session4', 'Session5']
 
     kf = KFold(n_splits=5, random_state=None, shuffle=False)

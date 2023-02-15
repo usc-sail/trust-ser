@@ -1,4 +1,5 @@
 import json
+import yaml
 import numpy as np
 import pandas as pd
 import pickle, pdb, re, os
@@ -18,9 +19,11 @@ logging.basicConfig(
 
 if __name__ == '__main__':
 
-    # data path
-    data_path = Path('/media/data/public-data/SER/Ravdess')
-    output_path = Path('/media/data/projects/speech-privacy/trust-ser')
+    # Read data path
+    with open("../config/config.yml", "r") as stream:
+        config = yaml.safe_load(stream)
+    data_path   = config["data_dir"]["ravdess"]
+    output_path = config["project_dir"]
 
     # ravdess speakers
     speaker_ids = [speaker_id for speaker_id in os.listdir(data_path) if '.zip' not in speaker_id]

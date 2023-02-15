@@ -1,4 +1,5 @@
 import json
+import yaml
 import numpy as np
 import pandas as pd
 import pickle, pdb, re
@@ -18,10 +19,12 @@ logging.basicConfig(
 
 if __name__ == '__main__':
 
-    # data path
-    data_path = Path('/media/data/public-data/SER/crema_d/CREMA-D/')
-    output_path = Path('/media/data/projects/speech-privacy/trust-ser')
-
+    # Read data path
+    with open("../config/config.yml", "r") as stream:
+        config = yaml.safe_load(stream)
+    data_path   = config["data_dir"]["crema_d"]
+    output_path = config["project_dir"]
+    
     kf = KFold(n_splits=5, random_state=None, shuffle=False)
     for fold_idx, (train_index, test_index) in enumerate(kf.split(np.arange(1001, 1092, 1))):
         Path.mkdir(output_path.joinpath('train_split'), parents=True, exist_ok=True)
