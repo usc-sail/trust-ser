@@ -12,8 +12,6 @@ from tqdm import tqdm
 from pathlib import Path
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.distributed import DistributedSampler
-from speechbrain.pretrained import SepformerSeparation as separator
-from speechbrain.pretrained.interfaces import SNREstimator as snrest
 
 from audiomentations import Compose, AddBackgroundNoise, PolarityInversion, AddGaussianSNR, Shift, TimeStretch
 
