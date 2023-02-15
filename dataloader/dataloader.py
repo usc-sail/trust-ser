@@ -91,12 +91,12 @@ class EmotionDatasetGenerator(Dataset):
     ):
         """
         Set dataloader for emotion recognition finetuning.
-        :param data_list: audio list files
-        :param noise_list: audio list files
-        :param data_len: length of input audio file size
-        :param is_train: flag for dataloader, True for training; False for dev
-        :param audio_duration: max length for the audio length
-        :param model_type: type of the model
+        :param data_list:       Audio list files
+        :param noise_list:      Audio list files
+        :param data_len:        Length of input audio file size
+        :param is_train:        Flag for dataloader, True for training; False for dev
+        :param audio_duration:  Max length for the audio length
+        :param model_type:      Type of the model
         """
         self.data_list      = data_list
         self.noise_list     = noise_list
@@ -132,9 +132,9 @@ def include_for_finetune(
 ):
     """
     Return flag for inlusion of finetune.
-    :param data: input data entries [key, filepath, labels]
-    :param dataset: input dataset name
-    :return: flag: True to include for finetuning, otherwise exclude for finetuning
+    :param data:        Input data entries [key, filepath, labels]
+    :param dataset:     Input dataset name
+    :return: flag:      True to include for finetuning, otherwise exclude for finetuning
     """
     if dataset in ["iemocap", "iemocap_impro"]:
         # IEMOCAP data include 4 emotions, exc->hap
@@ -163,9 +163,9 @@ def map_label(
 ):  
     """
     Return labels for the input data.
-    :param data: input data entries [key, filepath, labels]
-    :param dataset: input dataset name
-    :return label: label index: int
+    :param data:        Input data entries [key, filepath, labels]
+    :param dataset:     Input dataset name
+    :return label:      Label index: int
     """
     label_dict = {
         "iemocap": {"neu": 0, "sad": 1, "ang": 2, "exc": 3, "hap": 3},
@@ -197,9 +197,9 @@ def log_dataset_details(
 ):  
     """
     Log the label distribution of the dataset given the split.
-    :param input_data_list: input data entries [key, filepath, labels]
-    :param split: train/dev/test
-    :param dataset: input dataset name
+    :param input_data_list:     Input data entries [key, filepath, labels]
+    :param split:               Splits: train/dev/test
+    :param dataset:             Input dataset name
     :return label_stats: stats of the datasets
     """
     label_dict = {
@@ -235,7 +235,7 @@ def load_pretrain_audios(
 ):
     """
     Load pretrain audio data.
-    :param input_path: input data path
+    :param input_path: Input data path
     :return train_file_list, dev_file_list: train and dev file list, we don't have test in pretrain
     """
     train_file_list, dev_file_list = list(), list()
@@ -277,9 +277,9 @@ def load_finetune_audios(
 ):
     """
     Load finetune audio data.
-    :param input_path:  input data path
-    :param dataset:     dataset name
-    :param fold_idx:    fold idx
+    :param input_path:  Input data path
+    :param dataset:     Dataset name
+    :param fold_idx:    Fold idx
     :return train_file_list, dev_file_list: train, dev, and test file list
     """
     train_file_list, dev_file_list, test_file_list = list(), list(), list()
@@ -324,10 +324,10 @@ def return_weights(
 ):
     """
     Return training weights.
-    :param input_path:  input data path
-    :param dataset:     dataset name
-    :param fold_idx:    fold idx
-    :return weights: class weights
+    :param input_path:  Input data path
+    :param dataset:     Dataset name
+    :param fold_idx:    Fold idx
+    :return weights:    Class weights
     """
     train_file_list = list()
     if dataset in ["iemocap_impro"]:
@@ -358,84 +358,14 @@ def return_speakers(
 ):
     """
     Return training weights.
-    :param input_file_list: input file list
-    :return speakers: unique speakers
+    :param input_file_list:     input file list
+    :return speakers:           unique speakers
     """
     speaker_list = list()
     for input_data in input_file_list: speaker_list.append(input_data[1])
     speaker_list = list(set(speaker_list))
     speaker_list.sort()
     return speaker_list
-    
-def set_dataloader(
-    args:               dict,
-    input_file_list:    list,
-    is_train:           bool,
-    is_distributed:     bool=False,
-    rank:               int=0,
-    world_size:         int=2
-):
-
-    # noise files
-    noise_wav_files = glob.glob(
-        "/media/data/projects/speech-privacy/emo2vec/noise_audio/*.wav"
-    )
-
-    # dataloader
-    filtered_file_list = list()
-    for file_path in input_file_list:
-        if file_path[3] not in [
-            "/media/data/projects/speech-privacy/emo2vec/audio/cmu-mosei/train/-7161_hlBOP5NskhM.wav",
-            "/media/data/projects/speech-privacy/emo2vec/audio/cmu-mosei/train/678639_9K5mYSaoBL4.wav",
-            "/media/data/projects/speech-privacy/emo2vec/audio/cmu-mosei/train/607281_9K5mYSaoBL4.wav",
-            "/media/data/projects/speech-privacy/emo2vec/audio/cmu-mosei/train/730042_9K5mYSaoBL4.wav",
-            "/media/data/projects/speech-privacy/emo2vec/audio/cmu-mosei/train/643200_9K5mYSaoBL4.wav",
-            "/media/data/projects/speech-privacy/emo2vec/audio/cmu-mosei/train/570565_9K5mYSaoBL4.wav",
-            "/media/data/projects/speech-privacy/emo2vec/audio/cmu-mosei/train/78720_ULkFbie8g-I.wav",
-            "/media/data/projects/speech-privacy/emo2vec/audio/cmu-mosei/train/0_z7FicxE_pMU.wav",
-            "/media/data/projects/speech-privacy/emo2vec/audio/cmu-mosei/train/7524_-mJ2ud6oKI8.wav",
-            "/media/data/projects/speech-privacy/emo2vec/audio/cmu-mosei/train/78403_P0WaXnH37uI.wav",
-            "/media/data/projects/speech-privacy/emo2vec/audio/cmu-mosei/train/255120_ULkFbie8g-I.wav",
-            "/media/data/projects/speech-privacy/emo2vec/audio/cmu-mosei/train/0_278474.wav",
-            "/media/data/projects/speech-privacy/emo2vec/audio/cmu-mosei/train/77605_bUFAN2TgPaU.wav",
-            "/media/data/projects/speech-privacy/emo2vec/audio/cmu-mosei/train/491385_9bAgEmihzLs.wav",
-            "/media/data/projects/speech-privacy/emo2vec/audio/cmu-mosei/train/96761_-mJ2ud6oKI8.wav",
-            "/media/data/projects/speech-privacy/emo2vec/audio/cmu-mosei/train/133159_TxRS6vJ9ak0.wav",
-            "/media/data/projects/speech-privacy/emo2vec/audio/cmu-mosei/train/768515_9K5mYSaoBL4.wav"
-        ]:
-            filtered_file_list.append(file_path)
-    data_generator = PretrainDatasetGenerator(
-        data_list=filtered_file_list, 
-        noise_list=noise_wav_files,
-        data_len=len(filtered_file_list),
-        is_train=is_train,
-        audio_duration=args.audio_duration
-    )
-
-    if is_distributed:
-        datasampler = torch.utils.data.distributed.DistributedSampler(
-            data_generator
-        )
-
-        dataloader = DataLoader(
-            data_generator, 
-            batch_size=int(args.batch_size), 
-            num_workers=6, 
-            collate_fn=collate_pretrain_fn,
-            drop_last=True,
-            sampler=datasampler
-        )
-    else:
-        dataloader = DataLoader(
-            data_generator, 
-            batch_size=int(args.batch_size),
-            collate_fn=collate_pretrain_fn,
-            num_workers=6, 
-            shuffle=is_train,
-            drop_last=True
-        )
-    return dataloader
-
 
 def set_finetune_dataloader(
     args:               dict,
@@ -445,6 +375,15 @@ def set_finetune_dataloader(
     rank:               int=0,
     world_size:         int=2
 ):
+    """
+    Return dataloader for finetune experiments.
+    :param data:            Input data entries [key, filepath, labels]
+    :param is_train:        Flag for training or not
+    :param is_distributed:  Flag for distributed training or not
+    :param rank:            Current GPU rank
+    :param world_size:      Total GPU sizes
+    :return dataloader:     Dataloader
+    """
 
     # noise files
     noise_wav_files = glob.glob(
