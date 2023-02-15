@@ -287,8 +287,10 @@ def load_finetune_audios(
         with open(str(Path(input_path).joinpath(f'iemocap_fold{fold_idx}.json')), "r") as f: split_dict = json.load(f)
     elif dataset in ["crema_d_complete"]:
         with open(str(Path(input_path).joinpath(f'crema_d_fold{fold_idx}.json')), "r") as f: split_dict = json.load(f)
-    elif dataset in ["iemocap", "crema_d", "ravdess"]:
+    elif dataset in ["iemocap", "crema_d", "ravdess", "msp-improv"]:
         with open(str(Path(input_path).joinpath(f'{dataset}_fold{fold_idx}.json')), "r") as f: split_dict = json.load(f)
+    elif dataset in ["msp-podcast"]:
+        with open(str(Path(input_path).joinpath(f'{dataset}.json')), "r") as f: split_dict = json.load(f)
     
     for split in ['train', 'dev', 'test']:
         for data in split_dict[split]:
