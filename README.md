@@ -59,7 +59,7 @@ To train with a pretrained backbone, use the following:
 cd experiment
 CUDA_VISIBLE_DEVICES=0 taskset -c 1-30 python3 finetune_single_thread.py --pretrain_model apc --dataset iemocap --learning_rate 0.0005 --downstream_model cnn --num_epochs 30 --num_layers 3 --conv_layers 2 --pooling mean --hidden_size 128
 
-# pretrain_model: apc, tera, wavlm, wav2vec2_0, whisper_tiny, whisper (base one, to add)
+# pretrain_model: apc, tera, wavlm, wav2vec2_0, whisper_tiny, whisper_base, whisper_small
 # pooling: mean, att (self-attention)
 # hidden_size: size of cnn
 # conv_layers: number of cnn layers
