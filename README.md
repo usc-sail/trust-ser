@@ -52,6 +52,11 @@ cd preprocess_audio
 python3 preprocess_audio.py --dataset iemocap
 # dataset: iemocap, ravdess, msp-improv, msp-podcast, crema_d
 ```
+The script will generate the folder under your working dir:
+```
+OUTPUT_PATH/audio/iemocap
+```
+
 
 ### ML training
 To train with a pretrained backbone, use the following:
