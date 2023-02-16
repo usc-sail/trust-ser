@@ -26,7 +26,7 @@ from utils import parse_finetune_args, set_seed, log_epoch_result, log_best_resu
 from evaluation import EvalMetric
 from downstream_models import DNNClassifier, CNNSelfAttention
 from dataloader import load_finetune_audios, set_finetune_dataloader, return_weights
-from pretrained_backbones import Wav2Vec, APC, TERA, WavLM, WhisperTiny, WhisperBase
+from pretrained_backbones import Wav2Vec, APC, TERA, WavLM, WhisperTiny, WhisperBase, WhisperSmall
 
 # define logging console
 import logging
@@ -41,6 +41,7 @@ hid_dim_dict = {
     "wav2vec2_0":       768,
     "tera":             768,
     "wavlm":            768,
+    "whisper_small":    768,
     "whisper_base":     512,
     "whisper_tiny":     384,
     "apc":              512,
@@ -50,6 +51,7 @@ hid_dim_dict = {
 num_enc_layers_dict = {
     "wav2vec2_0":       12,
     "wavlm":            12,
+    "whisper_small":    12,
     "whisper_base":     6,
     "tera":             4,
     "whisper_tiny":     4,
@@ -209,6 +211,9 @@ if __name__ == '__main__':
         elif args.pretrain_model == "whisper_base":
             # Whisper base wrapper from huggingface
             backbone_model = WhisperBase().to(device)
+        elif args.pretrain_model == "whisper_small":
+            # Whisper small wrapper from huggingface
+            backbone_model = WhisperSmall().to(device)
 
         # Define the downstream models
         if args.downstream_model == "cnn":

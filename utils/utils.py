@@ -125,13 +125,6 @@ def parse_finetune_args():
     )
 
     parser.add_argument(
-        '--proj_size',
-        type=int, 
-        default=128,
-        help='Projection size dim'
-    )
-
-    parser.add_argument(
         '--num_epochs', 
         default=50,
         type=int,
@@ -143,27 +136,6 @@ def parse_finetune_args():
         default='adam',
         type=str,
         help="optimizer",
-    )
-    
-    parser.add_argument(
-        '--batch_size',
-        default=32,
-        type=int,
-        help="training batch size",
-    )
-
-    parser.add_argument(
-        '--temperature',
-        default=0.1,
-        type=float,
-        help="temperature",
-    )
-
-    parser.add_argument(
-        '--num_clusters',
-        default=16,
-        type=int,
-        help="num of clusters",
     )
     
     parser.add_argument(
