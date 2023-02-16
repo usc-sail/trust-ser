@@ -1,5 +1,6 @@
 # part of the code was referenced from SUPERB: https://github.com/s3prl/s3prl
 import pdb
+import copy
 import torch
 import itertools
 import s3prl.hub as hub
@@ -9,7 +10,7 @@ from collections import OrderedDict
 from typing import Optional, Callable
 from torch.nn import functional as F
 from torch.nn.functional import normalize
-from transformers import Wav2Vec2Model, Wav2Vec2Config, Wav2Vec2Processor, AutoProcessor, WavLMModel
+from transformers import Wav2Vec2Model, Wav2Vec2Config, Wav2Vec2Processor, AutoProcessor, WavLMModel, WhisperModel, AutoFeatureExtractor
 
     
 class Wav2Vec(nn.Module):
@@ -190,6 +191,89 @@ class WavLM(nn.Module):
         for kernel_size, stride in zip(self.backbone_model.config.conv_kernel, self.backbone_model.config.conv_stride):
             input_length = _conv_out_length(input_length, kernel_size, stride)
         return input_length
+
+
+class WhisperTiny(nn.Module):
+    def __init__(self):
+        super(WhisperTiny, self).__init__()
+        
+        # First we take the pretrained model
+        self.backbone_model = WhisperModel.from_pretrained("openai/whisper-tiny")
+        self.feature_extractor = AutoFeatureExtractor.from_pretrained("openai/whisper-tiny")
+        self.embed_positions = copy.deepcopy(self.backbone_model.encoder.embed_positions.weight)
+
+        # setting require grad = true only if we want to fine tune the pretrained model
+        for name, param in self.backbone_model.named_parameters(): param.requires_grad = False
+        
+    def forward(self, x, norm="nonorm", length=None):
+        
+        # Get the max audio length in a batch
+        if length is not None: max_audio_len = length.max().detach().cpu()
+        mask = None
+        
+        # 1. Feature extraction
+        if length is not None:
+            # Append to list for feature_extractor to work
+            new_x = list()
+            for idx in range(len(length)):
+                new_x.append(x[idx].detach().cpu().numpy())
+            # Max length is max audio len in a batch
+            input_features = self.feature_extractor(
+                new_x,
+                return_tensors="pt", 
+                sampling_rate=16000,
+                max_length=max_audio_len
+            )
+            
+            # Return length
+            length = self.get_feat_extract_output_lengths(length.detach().cpu())
+            max_len = length.max()
+
+            # Replace positional embeddings
+            self.backbone_model.encoder.embed_positions = self.backbone_model.encoder.embed_positions.from_pretrained(self.embed_positions[:max_len])
+            
+            with torch.no_grad():
+                feat = self.backbone_model.encoder(
+                    input_features.input_features.cuda(),
+                    output_hidden_states=True
+                ).hidden_states
+            mask = prepare_mask(length, feat[0].shape[:2], x.dtype)
+            length, mask = length.cuda(), mask.cuda()
+
+            # Stacked feature
+            stacked_feature = torch.stack(feat, dim=0)[1:]
+        else:
+            input_features = self.feature_extractor(
+                x[0].detach().cpu(), 
+                return_tensors="pt", 
+                sampling_rate=16000,
+                max_length=len(x[0])
+            )
+            
+            # Return length
+            length = self.get_feat_extract_output_lengths(len(x[0]))
+            
+            # Replace positional embeddings
+            self.backbone_model.encoder.embed_positions = self.backbone_model.encoder.embed_positions.from_pretrained(self.embed_positions[:length])
+            with torch.no_grad():
+                # Output shape: N x 1 x T x D
+                feat = self.backbone_model.encoder(
+                    input_features.input_features.cuda(),
+                    output_hidden_states=True
+                ).hidden_states
+            stacked_feature = torch.stack(feat, dim=0)[1:]
+        # 5. return feature, length and masks
+        if mask is not None: return stacked_feature, length, mask
+        return stacked_feature
+    
+    # From huggingface
+    def get_feat_extract_output_lengths(self, input_lengths):
+        """
+        Computes the output length of the convolutional layers
+        """
+        input_lengths = input_lengths // 160
+        input_lengths = (input_lengths - 1) // 2 + 1
+        return input_lengths
 
 
 def prepare_mask(length, shape, dtype):

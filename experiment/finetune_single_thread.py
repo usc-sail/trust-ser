@@ -24,8 +24,8 @@ from utils import parse_finetune_args, set_seed, log_epoch_result, log_best_resu
 
 # from utils
 from evaluation import EvalMetric
-from pretrained_backbones import Wav2Vec, APC, TERA, WavLM
 from downstream_models import DNNClassifier, CNNSelfAttention
+from pretrained_backbones import Wav2Vec, APC, TERA, WavLM, WhisperTiny
 from dataloader import load_finetune_audios, set_finetune_dataloader, return_weights
 
 # define logging console
@@ -38,18 +38,20 @@ logging.basicConfig(
 
 # Model hidden states information
 hid_dim_dict = {
-    "wav2vec2_0":   768,
-    "tera":         768,
-    "wavlm":        768,
-    "apc":          512,
+    "wav2vec2_0":       768,
+    "tera":             768,
+    "wavlm":            768,
+    "whisper_tiny":     384,
+    "apc":              512,
 }
 
 # Model number of encoding layers
 num_enc_layers_dict = {
-    "wav2vec2_0":   12,
-    "wavlm":        12,
-    "tera":         4,
-    "apc":          3,
+    "wav2vec2_0":       12,
+    "wavlm":            12,
+    "tera":             4,
+    "whisper_tiny":     4,
+    "apc":              3,
 }
 
 def train_epoch(
@@ -193,8 +195,11 @@ if __name__ == '__main__':
             # TERA wrapper from superb
             backbone_model = TERA().to(device)
         elif args.pretrain_model == "wavlm":
-            # wavlm wrapper from huggingface
+            # Wavlm wrapper from huggingface
             backbone_model = WavLM().to(device)
+        elif args.pretrain_model == "whisper_tiny":
+            # Whisper tiny wrapper from huggingface
+            backbone_model = WhisperTiny().to(device)
             
         # Define the downstream models
         if args.downstream_model == "cnn":
