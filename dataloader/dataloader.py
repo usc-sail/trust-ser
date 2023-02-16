@@ -336,6 +336,9 @@ def return_weights(
     elif dataset in ["crema_d_complete"]:
         with open(str(Path(input_path).joinpath(f'crema_d_fold{fold_idx}.json')), "r") as f:
             split_dict = json.load(f)
+    elif dataset in ["msp-podcast"]:
+        with open(str(Path(input_path).joinpath(f'{dataset}.json')), "r") as f:
+            split_dict = json.load(f)
     else:
         with open(str(Path(input_path).joinpath(f'{dataset}_fold{fold_idx}.json')), "r") as f:
             split_dict = json.load(f)
