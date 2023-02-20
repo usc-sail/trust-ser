@@ -1,9 +1,14 @@
 # part of the code was referenced from SUPERB: https://github.com/s3prl/s3prl
+import os
 import pdb
 import copy
 import torch
+import librosa
 import itertools
+import numpy as np
 import s3prl.hub as hub
+from functools import lru_cache
+from torchaudio.compliance import kaldi
 
 from torch import nn
 from collections import OrderedDict
@@ -12,9 +17,23 @@ from torch.nn import functional as F
 from torch.nn.functional import normalize
 from transformers import Wav2Vec2Model, Wav2Vec2Config, Wav2Vec2Processor, AutoProcessor, WavLMModel, WhisperModel, AutoFeatureExtractor
 
-    
+
+@lru_cache(maxsize=None)
+def mel_filters(device, n_mels: int = 80) -> torch.Tensor:
+    """
+    load the mel filterbank matrix for projecting STFT into a Mel spectrogram.
+    Allows decoupling librosa dependency; saved using:
+        np.savez_compressed(
+            "mel_filters.npz",
+            mel_80=librosa.filters.mel(sr=16000, n_fft=400, n_mels=80),
+        )
+    """
+    assert n_mels == 80, f"Unsupported n_mels: {n_mels}"
+    with np.load(os.path.join(os.path.dirname(__file__), "mel_filters.npz")) as f:
+        return torch.from_numpy(f[f"mel_{n_mels}"]).to(device)
+
 class Wav2Vec(nn.Module):
-    def __init__(self):
+    def __init__(self, is_attack=False):
         super(Wav2Vec, self).__init__()
         
         # First we take the pretrained xlsr model
@@ -24,15 +43,21 @@ class Wav2Vec(nn.Module):
         )
 
         # setting require grad = true only if we want to fine tune the pretrained model
-        for name, param in self.backbone_model.named_parameters(): param.requires_grad = False
+        self.backbone_model.feature_extractor.training = False
+        if not is_attack:
+            for name, param in self.backbone_model.named_parameters(): param.requires_grad = False
         
-    def forward(self, x, norm="nonorm", length=None):
+    def forward(self, x, norm="nonorm", length=None, is_attack=False):
         # 1. feature extraction and projections
-        with torch.no_grad():
+        if not is_attack:
+            with torch.no_grad():
+                x = self.backbone_model.feature_extractor(x)
+                x = x.transpose(1, 2) # New version of huggingface
+                x, _ = self.backbone_model.feature_projection(x) # New version of huggingface
+        else:
             x = self.backbone_model.feature_extractor(x)
             x = x.transpose(1, 2) # New version of huggingface
             x, _ = self.backbone_model.feature_projection(x) # New version of huggingface
-        
         # 2. get length and mask
         mask = None
         if length is not None:
@@ -40,11 +65,18 @@ class Wav2Vec(nn.Module):
             mask = prepare_mask(length, x.shape[:2], x.dtype)
             length, mask = length.cuda(), mask.cuda()
         # 3. transformer encoding features
-        with torch.no_grad():
+        if not is_attack:
+            with torch.no_grad():
+                feat = self.backbone_model.encoder(
+                    x, attention_mask=mask, 
+                    output_hidden_states=True
+                ).hidden_states
+        else:
             feat = self.backbone_model.encoder(
                 x, attention_mask=mask, 
                 output_hidden_states=True
             ).hidden_states
+
         # 4. stacked feature
         stacked_feature = torch.stack(feat, dim=0)[1:]
         # 5. return feature, length and masks
@@ -72,14 +104,20 @@ class APC(nn.Module):
         # setting require grad = true only if we want to fine tune the pretrained model
         for name, param in self.backbone_model.named_parameters(): param.requires_grad = False
         
-    def forward(self, x, norm="nonorm", length=None):
+    def forward(self, x, norm="nonorm", length=None, is_attack=False):
         # 1. if input is train with variable length
         new_x = list()
         if length is not None:
              for idx in range(len(length)):
                 new_x.append(x[idx][:length[idx]])
         # 2. infer hidden states
-        with torch.no_grad():
+        # Benign case
+        if not is_attack:
+            with torch.no_grad():
+                if length is not None: feat = self.backbone_model(new_x)['hidden_states']
+                else: feat = self.backbone_model(x)['hidden_states']
+        # Attack case
+        else:
             if length is not None: feat = self.backbone_model(new_x)['hidden_states']
             else: feat = self.backbone_model(x)['hidden_states']
         # 3. stacked feature
@@ -110,14 +148,20 @@ class TERA(nn.Module):
         # setting require grad = true only if we want to fine tune the pretrained model
         for name, param in self.backbone_model.named_parameters(): param.requires_grad = False
         
-    def forward(self, x, norm="nonorm", length=None):
+    def forward(self, x, norm="nonorm", length=None, is_attack=False):
         # 1. if input is train with variable length
         new_x = list()
         if length is not None:
              for idx in range(len(length)):
                 new_x.append(x[idx][:length[idx]])
         # 2. infer hidden states
-        with torch.no_grad():
+        # Benign case
+        if not is_attack:
+            with torch.no_grad():
+                if length is not None: feat = self.backbone_model(new_x)['hidden_states']
+                else: feat = self.backbone_model(x)['hidden_states']
+        # Attack case
+        else:
             if length is not None: feat = self.backbone_model(new_x)['hidden_states']
             else: feat = self.backbone_model(x)['hidden_states']
         # 3. stacked feature
@@ -142,7 +186,7 @@ class TERA(nn.Module):
 
 
 class WavLM(nn.Module):
-    def __init__(self):
+    def __init__(self, is_attack=False):
         super(WavLM, self).__init__()
         
         # First we take the pretrained xlsr model
@@ -150,17 +194,24 @@ class WavLM(nn.Module):
             "microsoft/wavlm-base-plus",
             output_hidden_states=True
         )
-
         # setting require grad = true only if we want to fine tune the pretrained model
-        for name, param in self.backbone_model.named_parameters(): param.requires_grad = False
+        if not is_attack:
+            for name, param in self.backbone_model.named_parameters(): param.requires_grad = False
         
-    def forward(self, x, norm="nonorm", length=None):
+    def forward(self, x, norm="nonorm", length=None, is_attack=False):
         # 1. feature extraction and projections
-        with torch.no_grad():
+        if not is_attack:
+            with torch.no_grad():
+                x = self.backbone_model.feature_extractor(x)
+                x = x.transpose(1, 2) # New version of huggingface
+                x, _ = self.backbone_model.feature_projection(x) # New version of huggingface
+        else:
+            # setting require grad = true only if we want to fine tune the pretrained model
+            self.backbone_model.feature_extractor.training = False
             x = self.backbone_model.feature_extractor(x)
             x = x.transpose(1, 2) # New version of huggingface
             x, _ = self.backbone_model.feature_projection(x) # New version of huggingface
-        
+
         # 2. get length and mask
         mask = None
         if length is not None:
@@ -168,11 +219,18 @@ class WavLM(nn.Module):
             mask = prepare_mask(length, x.shape[:2], x.dtype)
             length, mask = length.cuda(), mask.cuda()
         # 3. transformer encoding features
-        with torch.no_grad():
+        if not is_attack:
+            with torch.no_grad():
+                feat = self.backbone_model.encoder(
+                    x, attention_mask=mask, 
+                    output_hidden_states=True
+                ).hidden_states
+        else:
             feat = self.backbone_model.encoder(
                 x, attention_mask=mask, 
                 output_hidden_states=True
             ).hidden_states
+        
         # 4. stacked feature
         stacked_feature = torch.stack(feat, dim=0)[1:]
         # 5. return feature, length and masks
@@ -194,18 +252,19 @@ class WavLM(nn.Module):
 
 
 class WhisperTiny(nn.Module):
-    def __init__(self):
+    def __init__(self, is_attack=False):
         super(WhisperTiny, self).__init__()
         
         # First we take the pretrained model
         self.backbone_model = WhisperModel.from_pretrained("openai/whisper-tiny")
         self.feature_extractor = AutoFeatureExtractor.from_pretrained("openai/whisper-tiny")
         self.embed_positions = copy.deepcopy(self.backbone_model.encoder.embed_positions.weight)
-
+        
         # setting require grad = true only if we want to fine tune the pretrained model
+        # if not is_attack:
         for name, param in self.backbone_model.named_parameters(): param.requires_grad = False
         
-    def forward(self, x, norm="nonorm", length=None):
+    def forward(self, x, input_features=None, norm="nonorm", length=None, is_attack=False):
         
         # Get the max audio length in a batch
         if length is not None: max_audio_len = length.max().detach().cpu()
@@ -218,13 +277,6 @@ class WhisperTiny(nn.Module):
             for idx in range(len(length)):
                 new_x.append(x[idx].detach().cpu().numpy())
             # Max length is max audio len in a batch
-            input_features = self.feature_extractor(
-                new_x,
-                return_tensors="pt", 
-                sampling_rate=16000,
-                max_length=max_audio_len
-            )
-            
             # Return length
             length = self.get_feat_extract_output_lengths(length.detach().cpu())
             max_len = length.max()
@@ -243,22 +295,49 @@ class WhisperTiny(nn.Module):
             # Stacked feature
             stacked_feature = torch.stack(feat, dim=0)[1:]
         else:
-            input_features = self.feature_extractor(
-                x[0].detach().cpu(), 
-                return_tensors="pt", 
-                sampling_rate=16000,
-                max_length=len(x[0])
-            )
+            if is_attack:
+                # The preprocessing was referenced from Whisper
+                # https://github.com/openai/whisper/blob/main/whisper/audio.py
+                # We use whisper implementation as it allows differentiations of DFT
+                audio = x[0].cpu().unsqueeze(dim=0)
+                window = torch.hann_window(400).to(audio.device)
+                stft = torch.stft(audio, 400, 160, window=window, return_complex=True)
+                magnitudes = stft[..., :-1].abs() ** 2
+
+                filters = mel_filters(audio.device, 80)
+                mel_spec = filters @ magnitudes
+
+                log_spec = torch.clamp(mel_spec, min=1e-10).log10()
+                log_spec = torch.maximum(log_spec, log_spec.max() - 8.0)
+                input_features = (log_spec + 4.0) / 4.0
+                input_features = input_features.cuda()
+            
+            if input_features is None:
+                input_features = self.feature_extractor(
+                    x[0].detach().cpu(), 
+                    return_tensors="pt", 
+                    sampling_rate=16000,
+                    max_length=len(x[0])
+                )
+                input_features = input_features.input_features.cuda()
             
             # Return length
             length = self.get_feat_extract_output_lengths(len(x[0]))
             
             # Replace positional embeddings
             self.backbone_model.encoder.embed_positions = self.backbone_model.encoder.embed_positions.from_pretrained(self.embed_positions[:length])
-            with torch.no_grad():
+            if not is_attack:
+                with torch.no_grad():
+                    # Output shape: N x 1 x T x D
+                    feat = self.backbone_model.encoder(
+                        input_features, 
+                        output_hidden_states=True
+                    ).hidden_states
+            else:
+                # input_features.requires_grad = True
                 # Output shape: N x 1 x T x D
                 feat = self.backbone_model.encoder(
-                    input_features.input_features.cuda(),
+                    input_features,
                     output_hidden_states=True
                 ).hidden_states
             stacked_feature = torch.stack(feat, dim=0)[1:]
@@ -276,7 +355,7 @@ class WhisperTiny(nn.Module):
         return input_lengths
 
 class WhisperBase(nn.Module):
-    def __init__(self):
+    def __init__(self, is_attack=False):
         super(WhisperBase, self).__init__()
         
         # First we take the pretrained model
@@ -287,7 +366,7 @@ class WhisperBase(nn.Module):
         # setting require grad = true only if we want to fine tune the pretrained model
         for name, param in self.backbone_model.named_parameters(): param.requires_grad = False
         
-    def forward(self, x, norm="nonorm", length=None):
+    def forward(self, x, norm="nonorm", length=None, is_attack=False):
         
         # Get the max audio length in a batch
         if length is not None: max_audio_len = length.max().detach().cpu()
@@ -325,22 +404,47 @@ class WhisperBase(nn.Module):
             # Stacked feature
             stacked_feature = torch.stack(feat, dim=0)[1:]
         else:
-            input_features = self.feature_extractor(
-                x[0].detach().cpu(), 
-                return_tensors="pt", 
-                sampling_rate=16000,
-                max_length=len(x[0])
-            )
+            if is_attack:
+                # The preprocessing was referenced from Whisper
+                # https://github.com/openai/whisper/blob/main/whisper/audio.py
+                # We use whisper implementation as it allows differentiations of DFT
+                audio = x[0].cpu().unsqueeze(dim=0)
+                window = torch.hann_window(400).to(audio.device)
+                stft = torch.stft(audio, 400, 160, window=window, return_complex=True)
+                magnitudes = stft[..., :-1].abs() ** 2
+
+                filters = mel_filters(audio.device, 80)
+                mel_spec = filters @ magnitudes
+
+                log_spec = torch.clamp(mel_spec, min=1e-10).log10()
+                log_spec = torch.maximum(log_spec, log_spec.max() - 8.0)
+                input_features = (log_spec + 4.0) / 4.0
+                input_features = input_features.cuda()
+            else:
+                input_features = self.feature_extractor(
+                    x[0].detach().cpu(), 
+                    return_tensors="pt", 
+                    sampling_rate=16000,
+                    max_length=len(x[0])
+                )
+                input_features = input_features.input_features.cuda()
             
             # Return length
             length = self.get_feat_extract_output_lengths(len(x[0]))
             
             # Replace positional embeddings
             self.backbone_model.encoder.embed_positions = self.backbone_model.encoder.embed_positions.from_pretrained(self.embed_positions[:length])
-            with torch.no_grad():
+            if not is_attack:
+                with torch.no_grad():
+                    # Output shape: N x 1 x T x D
+                    feat = self.backbone_model.encoder(
+                        input_features,
+                        output_hidden_states=True
+                    ).hidden_states
+            else:
                 # Output shape: N x 1 x T x D
                 feat = self.backbone_model.encoder(
-                    input_features.input_features.cuda(),
+                    input_features,
                     output_hidden_states=True
                 ).hidden_states
             stacked_feature = torch.stack(feat, dim=0)[1:]
@@ -359,7 +463,7 @@ class WhisperBase(nn.Module):
 
 
 class WhisperSmall(nn.Module):
-    def __init__(self):
+    def __init__(self, is_attack=False):
         super(WhisperSmall, self).__init__()
         
         # First we take the pretrained model
@@ -370,7 +474,7 @@ class WhisperSmall(nn.Module):
         # setting require grad = true only if we want to fine tune the pretrained model
         for name, param in self.backbone_model.named_parameters(): param.requires_grad = False
         
-    def forward(self, x, norm="nonorm", length=None):
+    def forward(self, x, norm="nonorm", length=None, is_attack=False):
         
         # Get the max audio length in a batch
         if length is not None: max_audio_len = length.max().detach().cpu()
@@ -408,24 +512,50 @@ class WhisperSmall(nn.Module):
             # Stacked feature
             stacked_feature = torch.stack(feat, dim=0)[1:]
         else:
-            input_features = self.feature_extractor(
-                x[0].detach().cpu(), 
-                return_tensors="pt", 
-                sampling_rate=16000,
-                max_length=len(x[0])
-            )
+            if is_attack:
+                # The preprocessing was referenced from Whisper
+                # https://github.com/openai/whisper/blob/main/whisper/audio.py
+                # We use whisper implementation as it allows differentiations of DFT
+                audio = x[0].cpu().unsqueeze(dim=0)
+                window = torch.hann_window(400).to(audio.device)
+                stft = torch.stft(audio, 400, 160, window=window, return_complex=True)
+                magnitudes = stft[..., :-1].abs() ** 2
+
+                filters = mel_filters(audio.device, 80)
+                mel_spec = filters @ magnitudes
+
+                log_spec = torch.clamp(mel_spec, min=1e-10).log10()
+                log_spec = torch.maximum(log_spec, log_spec.max() - 8.0)
+                input_features = (log_spec + 4.0) / 4.0
+                input_features = input_features.cuda()
+            else:
+                input_features = self.feature_extractor(
+                    x[0].detach().cpu(), 
+                    return_tensors="pt", 
+                    sampling_rate=16000,
+                    max_length=len(x[0])
+                )
+                input_features = input_features.input_features.cuda()
             
             # Return length
             length = self.get_feat_extract_output_lengths(len(x[0]))
             
             # Replace positional embeddings
             self.backbone_model.encoder.embed_positions = self.backbone_model.encoder.embed_positions.from_pretrained(self.embed_positions[:length])
-            with torch.no_grad():
+            if not is_attack:
+                with torch.no_grad():
+                    # Output shape: N x 1 x T x D
+                    feat = self.backbone_model.encoder(
+                        input_features,
+                        output_hidden_states=True
+                    ).hidden_states
+            else:
                 # Output shape: N x 1 x T x D
                 feat = self.backbone_model.encoder(
-                    input_features.input_features.cuda(),
+                    input_features,
                     output_hidden_states=True
                 ).hidden_states
+
             stacked_feature = torch.stack(feat, dim=0)[1:]
         # 5. return feature, length and masks
         if mask is not None: return stacked_feature, length, mask

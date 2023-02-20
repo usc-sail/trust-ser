@@ -103,6 +103,27 @@ def parse_finetune_args():
     )
 
     parser.add_argument(
+        '--uar_dir', 
+        default='/media/data/projects/speech-privacy/trust-ser/uar',
+        type=str, 
+        help='model uar history'
+    )
+
+    parser.add_argument(
+        '--attack_dir', 
+        default='/media/data/projects/speech-privacy/trust-ser/attack',
+        type=str, 
+        help='attack data'
+    )
+
+    parser.add_argument(
+        '--attack_method', 
+        default='pgd',
+        type=str, 
+        help='attack method'
+    )
+
+    parser.add_argument(
         '--fairness_dir', 
         default='/media/data/projects/speech-privacy/trust-ser/fairness',
         type=str, 

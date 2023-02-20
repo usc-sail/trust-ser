@@ -1,0 +1,277 @@
+import json
+import torch
+import random
+import torchaudio
+import numpy as np
+import pandas as pd
+import torch.nn as nn
+import argparse, logging
+import torch.multiprocessing
+import copy, time, pickle, shutil, sys, os, pdb
+
+from tqdm import tqdm
+from pathlib import Path
+from copy import deepcopy
+from collections import defaultdict, deque
+from torch.utils.tensorboard import SummaryWriter
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+
+
+sys.path.append(os.path.join(str(Path(os.path.realpath(__file__)).parents[2])))
+sys.path.append(os.path.join(str(Path(os.path.realpath(__file__)).parents[2]), 'model'))
+sys.path.append(os.path.join(str(Path(os.path.realpath(__file__)).parents[2]), 'experiment'))
+sys.path.append(os.path.join(str(Path(os.path.realpath(__file__)).parents[2]), 'dataloader'))
+
+from utils import parse_finetune_args, set_seed, log_epoch_result, log_best_result
+
+# from utils
+from evaluation import EvalMetric
+from downstream_models import DNNClassifier, CNNSelfAttention
+from dataloader import load_finetune_audios, set_finetune_dataloader, return_weights
+from pretrained_backbones import Wav2Vec, APC, TERA, WavLM, WhisperTiny, WhisperBase, WhisperSmall
+
+# define logging console
+import logging
+logging.basicConfig(
+    format='%(asctime)s %(levelname)-3s ==> %(message)s', 
+    level=logging.INFO, 
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# Model hidden states information
+hid_dim_dict = {
+    "wav2vec2_0":       768,
+    "tera":             768,
+    "wavlm":            768,
+    "whisper_small":    768,
+    "whisper_base":     512,
+    "whisper_tiny":     384,
+    "apc":              512,
+}
+
+# Model number of encoding layers
+num_enc_layers_dict = {
+    "wav2vec2_0":       12,
+    "wavlm":            12,
+    "whisper_small":    12,
+    "whisper_base":     6,
+    "tera":             4,
+    "whisper_tiny":     4,
+    "apc":              3,
+}
+
+os.environ["MKL_NUM_THREADS"] = "1" 
+os.environ["NUMEXPR_NUM_THREADS"] = "1" 
+os.environ["OMP_NUM_THREADS"] = "1" 
+
+# PGD
+def pgd_attack(sound, ori_sound, eps, alpha, data_grad):
+    adv_sound = sound - alpha * data_grad.sign() # + -> - !!!
+    eta = torch.clamp(adv_sound - ori_sound.data, min=-eps, max=eps)
+    sound = ori_sound + eta
+    return sound
+
+# FGSM
+def fgsm_attack(sound, epsilon, data_grad):
+    # find direction of gradient
+    sign_data_grad = data_grad.sign()
+    # add noise "epilon * direction" to the ori sound
+    perturbed_sound = sound + epsilon * sign_data_grad
+    return perturbed_sound
+
+def validate_epoch(
+    dataloader, 
+    model, 
+    device,
+    split:  str="Validation"
+):
+    eval_metric = EvalMetric()
+    criterion = nn.NLLLoss().to(device)
+    
+    for batch_idx, batch_data in enumerate(dataloader):
+        # Read data
+        x, y = batch_data
+        x, y = x.to(device), y.to(device)
+        
+        # Perform Attack
+        model.train()
+        backbone_model.train()
+        
+        # FGSM attack
+        if args.attack_method == "fgsm":
+            # Set require gradients to be true
+            x.requires_grad = True
+            if args.pretrain_model in ["whisper_tiny"]:
+                # feat, input_features = backbone_model(x, norm=args.norm, is_attack=True)
+                feat = backbone_model(x, norm=args.norm, is_attack=True)
+            else:
+                feat = backbone_model(x, norm=args.norm, is_attack=True)
+            outputs = model(feat)
+            outputs = torch.log_softmax(outputs, dim=1)         
+            # Backward
+            loss = criterion(outputs, y)
+            loss.backward()
+            # Read gradients of data and perturb
+            x_grad = x.grad.data
+            perturbed_x = fgsm_attack(x, epsilon=0.00001, data_grad=x_grad)
+            
+            # torchaudio.save('original.wav', x.detach().cpu(), 16000)
+            # torchaudio.save('adv.wav', perturbed_x.detach().cpu(), 16000)
+            # pdb.set_trace()
+
+            # Zero the gradients
+            backbone_model.zero_grad()
+            model.zero_grad()
+        # PGD attack
+        elif args.attack_method == "pgd":
+            for step in range(10):
+                # Forward pass
+                feat = backbone_model(x, norm=args.norm, is_attack=True)
+                outputs = model(feat)
+                outputs = torch.log_softmax(outputs, dim=1)         
+                # backward
+                loss = criterion(outputs, y)
+                loss.backward()
+
+        # Perform evaluation
+        model.eval()
+        backbone_model.eval()
+        # Forward pass
+        if args.pretrain_model in ["whisper_tiny"]:
+            # pdb.set_trace()
+            # feat = backbone_model(x, input_features=perturbed_x, norm=args.norm, is_attack=False)
+            feat = backbone_model(perturbed_x, norm=args.norm, is_attack=False)
+        else:
+            feat = backbone_model(perturbed_x, norm=args.norm, is_attack=False)
+        # feat = backbone_model(perturbed_x, norm=args.norm, is_attack=False)
+        outputs = model(feat)
+        outputs = torch.log_softmax(outputs, dim=1)
+        eval_metric.append_classification_results(y, outputs, loss)
+
+        if (batch_idx % 50 == 0 and batch_idx != 0) or batch_idx == len(dataloader) - 1:
+            result_dict = eval_metric.classification_summary()
+            logging.info(f'Fold {fold_idx} - Current {split} Loss step {batch_idx+1}/{len(dataloader)} {result_dict["loss"]:.3f}')
+            logging.info(f'Fold {fold_idx} - Current {split} UAR step {batch_idx+1}/{len(dataloader)} {result_dict["uar"]:.2f}%')
+            logging.info(f'Fold {fold_idx} - Current {split} ACC step {batch_idx+1}/{len(dataloader)} {result_dict["acc"]:.2f}%')
+            logging.info(f'-------------------------------------------------------------------')
+    logging.info(f'-------------------------------------------------------------------')
+    result_dict = eval_metric.classification_summary()
+    if split == "Validation": scheduler.step(result_dict["loss"])
+    return result_dict
+
+
+if __name__ == '__main__':
+
+    # Argument parser
+    args = parse_finetune_args()
+
+    # Find device
+    device = torch.device("cuda") if torch.cuda.is_available() else "cpu"
+    if torch.cuda.is_available(): print('GPU available, use GPU')
+    
+    result_dict = dict()
+    if args.dataset == "msp-improv": total_folds = 7
+    else: total_folds = 6
+    
+    # We perform 5 folds (6 folds only on msp-improv data with 6 sessions)
+    for fold_idx in range(1, total_folds):
+
+        # Read train/dev file list
+        train_file_list, dev_file_list, test_file_list = load_finetune_audios(
+            args.split_dir, dataset=args.dataset, fold_idx=fold_idx
+        )
+        
+        test_dataloader = set_finetune_dataloader(
+            args, test_file_list, is_train=False
+        )
+
+        # Define log dir
+        log_dir = Path(args.log_dir).joinpath(
+            args.dataset, args.pretrain_model,
+            f'lr{str(args.learning_rate).replace(".", "")}_ep{args.num_epochs}_{args.downstream_model}_conv{args.conv_layers}_hid{args.hidden_size}_{args.pooling}'
+        )
+        # Define attack dir
+        attack_dir = Path(args.attack_dir).joinpath(
+            args.attack_method, args.dataset, args.pretrain_model,
+            f'lr{str(args.learning_rate).replace(".", "")}_ep{args.num_epochs}_{args.downstream_model}_conv{args.conv_layers}_hid{args.hidden_size}_{args.pooling}'
+        )
+        Path.mkdir(attack_dir, parents=True, exist_ok=True)
+        
+        # Set seeds
+        set_seed(8*fold_idx)
+        
+        # Define the model wrapper
+        if args.pretrain_model == "wav2vec2_0":
+            # Wav2vec2_0 Wrapper
+            backbone_model = Wav2Vec(is_attack=True).to(device)
+        elif args.pretrain_model == "apc":
+            # APC wrapper from superb
+            backbone_model = APC().to(device)
+        elif args.pretrain_model == "tera":
+            # TERA wrapper from superb
+            backbone_model = TERA().to(device)
+        elif args.pretrain_model == "wavlm":
+            # Wavlm wrapper from huggingface
+            backbone_model = WavLM(is_attack=True).to(device)
+        elif args.pretrain_model == "whisper_tiny":
+            # Whisper tiny wrapper from huggingface
+            backbone_model = WhisperTiny(is_attack=True).to(device)
+        elif args.pretrain_model == "whisper_base":
+            # Whisper base wrapper from huggingface
+            backbone_model = WhisperBase(is_attack=True).to(device)
+        elif args.pretrain_model == "whisper_small":
+            # Whisper small wrapper from huggingface
+            backbone_model = WhisperSmall(is_attack=True).to(device)
+
+        # Define the downstream models
+        if args.downstream_model == "cnn":
+            # Define the number of class
+            if args.dataset in ["iemocap", "msp-improv", "meld", "iemocap_impro"]: num_class = 4
+            elif args.dataset in ["msp-podcast"]: num_class = 4
+            elif args.dataset in ["crema_d"]: num_class = 4
+            elif args.dataset in ["ravdess"]: num_class = 7
+
+            # Define the models
+            model = CNNSelfAttention(
+                input_dim=hid_dim_dict[args.pretrain_model], 
+                output_class_num=num_class, 
+                conv_layer=args.conv_layers, 
+                num_enc_layers=num_enc_layers_dict[args.pretrain_model], 
+                pooling_method=args.pooling
+            )
+
+            model.load_state_dict(
+                torch.load(str(log_dir.joinpath(f'fold_{fold_idx}.pt'))), 
+                strict=False
+            )
+            model = model.to(device)
+        
+        test_result = validate_epoch(
+            test_dataloader, model, device, split="Test"
+        )
+        
+        result_dict[fold_idx] = dict()
+        result_dict[fold_idx]["uar"] = test_result["uar"]
+        result_dict[fold_idx]["acc"] = test_result["acc"]
+        
+        # save best results
+        jsonString = json.dumps(result_dict, indent=4)
+        jsonFile = open(str(attack_dir.joinpath(f'results.json')), "w")
+        jsonFile.write(jsonString)
+        jsonFile.close()
+
+    uar_list = [result_dict[fold_idx]["uar"] for fold_idx in result_dict]
+    acc_list = [result_dict[fold_idx]["acc"] for fold_idx in result_dict]
+    result_dict["average"] = dict()
+    result_dict["average"]["uar"] = np.mean(uar_list)
+    result_dict["average"]["acc"] = np.mean(acc_list)
+    
+    result_dict["std"] = dict()
+    result_dict["std"]["uar"] = np.std(uar_list)
+    result_dict["std"]["acc"] = np.std(acc_list)
+    
+    # save best results
+    jsonString = json.dumps(result_dict, indent=4)
+    jsonFile = open(str(attack_dir.joinpath(f'results.json')), "w")
+    jsonFile.write(jsonString)
+    jsonFile.close()
