@@ -125,11 +125,7 @@ def validate_epoch(
         
             # Set require gradients to be true
             x.requires_grad = True
-            if args.pretrain_model in ["whisper_tiny"]:
-                # feat, input_features = backbone_model(x, norm=args.norm, is_attack=True)
-                feat = backbone_model(x, norm=args.norm, is_attack=True)
-            else:
-                feat = backbone_model(x, norm=args.norm, is_attack=True)
+            feat = backbone_model(x, is_attack=True)
             outputs = model(feat)
             outputs = torch.log_softmax(outputs, dim=1)         
             # Backward
