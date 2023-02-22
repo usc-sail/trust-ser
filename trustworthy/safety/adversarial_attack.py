@@ -112,12 +112,25 @@ def validate_epoch(
     eval_metric = EvalMetric()
     criterion = nn.NLLLoss().to(device)
     
+    total_attacks, success_attack = 0, 0
     for batch_idx, batch_data in enumerate(dataloader):
         # Read data
         x, y = batch_data
         x, y = x.to(device), y.to(device)
+
+        # 1. Only perform attack on the correct samples
+        # Forward pass
+        model.eval()
+        backbone_model.eval()
+        feat = backbone_model(x, norm=args.norm, is_attack=False)
+        # feat = backbone_model(perturbed_x, norm=args.norm, is_attack=False)
+        outputs = model(feat)
+        outputs = torch.log_softmax(outputs, dim=1)
+        if (y[0]==outputs.argmax()).detach().cpu().numpy() == False: 
+            continue
         
         # FGSM attack
+        total_attacks += 1
         if args.attack_method == "fgsm":
             # Perform Attack
             model.train()
@@ -168,18 +181,17 @@ def validate_epoch(
         # feat = backbone_model(perturbed_x, norm=args.norm, is_attack=False)
         outputs = model(feat)
         outputs = torch.log_softmax(outputs, dim=1)
-        eval_metric.append_classification_results(y, outputs, loss=None)
+
+        if (y[0]==outputs.argmax()).detach().cpu().numpy() == False: 
+            success_attack += 1
 
         if (batch_idx % 50 == 0 and batch_idx != 0) or batch_idx == len(dataloader) - 1:
-            result_dict = eval_metric.classification_summary()
-            logging.info(f'Fold {fold_idx} - Current {split} Loss step {batch_idx+1}/{len(dataloader)} {result_dict["loss"]:.3f}')
-            logging.info(f'Fold {fold_idx} - Current {split} UAR step {batch_idx+1}/{len(dataloader)} {result_dict["uar"]:.2f}%')
-            logging.info(f'Fold {fold_idx} - Current {split} ACC step {batch_idx+1}/{len(dataloader)} {result_dict["acc"]:.2f}%')
+            logging.info(f'-------------------------------------------------------------------')
+            logging.info(f'Fold {fold_idx} - Current {split} Attack Success Rate step {batch_idx+1}/{len(dataloader)} {(success_attack / total_attacks)*100:.2f}%')
             logging.info(f'-------------------------------------------------------------------')
     logging.info(f'-------------------------------------------------------------------')
-    result_dict = eval_metric.classification_summary()
-    if split == "Validation": scheduler.step(result_dict["loss"])
-    return result_dict
+    attack_success_rate = (success_attack / total_attacks) * 100
+    return attack_success_rate
 
 
 if __name__ == '__main__':
@@ -281,8 +293,7 @@ if __name__ == '__main__':
         )
         
         result_dict[fold_idx] = dict()
-        result_dict[fold_idx]["uar"] = test_result["uar"]
-        result_dict[fold_idx]["acc"] = test_result["acc"]
+        result_dict[fold_idx]["attack_success_rate"] = test_result["attack_success_rate"]
         
         # save best results
         jsonString = json.dumps(result_dict, indent=4)
@@ -290,15 +301,10 @@ if __name__ == '__main__':
         jsonFile.write(jsonString)
         jsonFile.close()
 
-    uar_list = [result_dict[fold_idx]["uar"] for fold_idx in result_dict]
-    acc_list = [result_dict[fold_idx]["acc"] for fold_idx in result_dict]
-    result_dict["average"] = dict()
-    result_dict["average"]["uar"] = np.mean(uar_list)
-    result_dict["average"]["acc"] = np.mean(acc_list)
-    
-    result_dict["std"] = dict()
-    result_dict["std"]["uar"] = np.std(uar_list)
-    result_dict["std"]["acc"] = np.std(acc_list)
+    attack_success_list = [result_dict[fold_idx]["attack_success_rate"] for fold_idx in result_dict]
+    result_dict["average"], result_dict["std"] = dict(), dict()
+    result_dict["average"]["attack_success_rate"] = np.mean(attack_success_list)
+    result_dict["std"]["attack_success_rate"] = np.std(attack_success_list)
     
     # save best results
     jsonString = json.dumps(result_dict, indent=4)
