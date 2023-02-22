@@ -115,6 +115,20 @@ def parse_finetune_args():
         type=str, 
         help='attack data'
     )
+    
+    parser.add_argument(
+        '--privacy_attack_dir', 
+        default='/media/data/projects/speech-privacy/trust-ser/privacy',
+        type=str, 
+        help='privacy attack method data'
+    )
+    
+    parser.add_argument(
+        '--privacy_attack', 
+        default='gender',
+        type=str, 
+        help='Privacy attack method'
+    )
 
     parser.add_argument(
         '--attack_method', 

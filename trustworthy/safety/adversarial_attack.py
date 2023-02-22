@@ -72,12 +72,36 @@ def pgd_attack(sound, ori_sound, eps, alpha, data_grad):
     return sound
 
 # FGSM
-def fgsm_attack(sound, epsilon, data_grad):
-    # find direction of gradient
+def fgsm_attack(sound, data_grad):
+    # Find direction of gradient
     sign_data_grad = data_grad.sign()
+    
+    # Calculate the gradients
+    sound_norm = np.sqrt(np.mean(np.square(sound.detach().cpu().numpy())))
+    noise_rms = np.sqrt(np.mean(np.square(sign_data_grad.detach().cpu().numpy())))
+    desired_noise_rms = calculate_desired_noise_rms(sound_norm, snr=45)
+
+    # Adjust the noise to match the desired noise RMS
+    noise_sound = sign_data_grad * (desired_noise_rms / noise_rms)
+    
     # add noise "epilon * direction" to the ori sound
-    perturbed_sound = sound + epsilon * sign_data_grad
+    perturbed_sound = sound + noise_sound
     return perturbed_sound
+
+# The code was taken: 
+# https://github.com/iver56/audiomentations/blob/4e3685491aabb5b2e24191020f7b0a8356d5feec/audiomentations/core/utils.py#L112
+def calculate_desired_noise_rms(clean_rms, snr):
+    """
+    Given the Root Mean Square (RMS) of a clean sound and a desired signal-to-noise ratio (SNR),
+    calculate the desired RMS of a noise sound to be mixed in.
+    Based on https://github.com/Sato-Kunihiko/audio-SNR/blob/8d2c933b6c0afe6f1203251f4877e7a1068a6130/create_mixed_audio_file.py#L20
+    :param clean_rms: Root Mean Square (RMS) - a value between 0.0 and 1.0
+    :param snr: Signal-to-Noise (SNR) Ratio in dB - typically somewhere between -20 and 60
+    :return:
+    """
+    a = float(snr) / 20
+    noise_rms = clean_rms / (10**a)
+    return noise_rms
 
 def validate_epoch(
     dataloader, 
@@ -93,12 +117,12 @@ def validate_epoch(
         x, y = batch_data
         x, y = x.to(device), y.to(device)
         
-        # Perform Attack
-        model.train()
-        backbone_model.train()
-        
         # FGSM attack
         if args.attack_method == "fgsm":
+            # Perform Attack
+            model.train()
+            backbone_model.train()
+        
             # Set require gradients to be true
             x.requires_grad = True
             if args.pretrain_model in ["whisper_tiny"]:
@@ -113,7 +137,7 @@ def validate_epoch(
             loss.backward()
             # Read gradients of data and perturb
             x_grad = x.grad.data
-            perturbed_x = fgsm_attack(x, epsilon=0.00001, data_grad=x_grad)
+            perturbed_x = fgsm_attack(x, data_grad=x_grad)
             
             # torchaudio.save('original.wav', x.detach().cpu(), 16000)
             # torchaudio.save('adv.wav', perturbed_x.detach().cpu(), 16000)
@@ -124,6 +148,10 @@ def validate_epoch(
             model.zero_grad()
         # PGD attack
         elif args.attack_method == "pgd":
+            # Perform Attack
+            model.train()
+            backbone_model.train()
+        
             for step in range(10):
                 # Forward pass
                 feat = backbone_model(x, norm=args.norm, is_attack=True)
@@ -137,16 +165,14 @@ def validate_epoch(
         model.eval()
         backbone_model.eval()
         # Forward pass
-        if args.pretrain_model in ["whisper_tiny"]:
-            # pdb.set_trace()
-            # feat = backbone_model(x, input_features=perturbed_x, norm=args.norm, is_attack=False)
+        if args.attack_method in ["fgsm", "pgd"]: 
             feat = backbone_model(perturbed_x, norm=args.norm, is_attack=False)
-        else:
-            feat = backbone_model(perturbed_x, norm=args.norm, is_attack=False)
+        elif args.attack_method in ["guassian_noise"]:
+            feat = backbone_model(x, norm=args.norm, is_attack=False)
         # feat = backbone_model(perturbed_x, norm=args.norm, is_attack=False)
         outputs = model(feat)
         outputs = torch.log_softmax(outputs, dim=1)
-        eval_metric.append_classification_results(y, outputs, loss)
+        eval_metric.append_classification_results(y, outputs, loss=None)
 
         if (batch_idx % 50 == 0 and batch_idx != 0) or batch_idx == len(dataloader) - 1:
             result_dict = eval_metric.classification_summary()
@@ -172,7 +198,15 @@ if __name__ == '__main__':
     result_dict = dict()
     if args.dataset == "msp-improv": total_folds = 7
     else: total_folds = 6
-    
+
+    # Set flag for attack or not
+    if args.attack_method in ["fgsm", "pgd"]: 
+        is_attack               = True
+        apply_guassian_noise    = False
+    elif args.attack_method in ["guassian_noise"]:
+        is_attack               = False
+        apply_guassian_noise    = True
+
     # We perform 5 folds (6 folds only on msp-improv data with 6 sessions)
     for fold_idx in range(1, total_folds):
 
@@ -182,7 +216,7 @@ if __name__ == '__main__':
         )
         
         test_dataloader = set_finetune_dataloader(
-            args, test_file_list, is_train=False
+            args, test_file_list, is_train=False, apply_guassian_noise=apply_guassian_noise
         )
 
         # Define log dir
@@ -191,7 +225,7 @@ if __name__ == '__main__':
             f'lr{str(args.learning_rate).replace(".", "")}_ep{args.num_epochs}_{args.downstream_model}_conv{args.conv_layers}_hid{args.hidden_size}_{args.pooling}'
         )
         # Define attack dir
-        attack_dir = Path(args.attack_dir).joinpath(
+        attack_dir = Path(args.privacy_attack_dir).joinpath(
             args.attack_method, args.dataset, args.pretrain_model,
             f'lr{str(args.learning_rate).replace(".", "")}_ep{args.num_epochs}_{args.downstream_model}_conv{args.conv_layers}_hid{args.hidden_size}_{args.pooling}'
         )

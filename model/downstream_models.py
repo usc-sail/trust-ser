@@ -60,7 +60,7 @@ class CNNSelfAttention(nn.Module):
     ):
         super(CNNSelfAttention, self).__init__()
         
-        # point-wise convolution
+        # 1D point-wise convolution
         if conv_layer == 3:
             self.model_seq = nn.Sequential(
                 nn.Conv1d(input_dim, hidden_dim, kernel_size, padding=padding),
@@ -102,9 +102,10 @@ class CNNSelfAttention(nn.Module):
         
     def forward(self, features, length=None, mask=None):
         # Weighted average of all layers outputs
+        # Num_enc x B x T x D
         if len(features.shape) == 4: 
             _, *origin_shape = features.shape
-            # Return transformer enc outputs [B, num_enc_layers, T, D]
+            # Return transformer enc outputs [num_enc_layers, B, T, D]
             features = features.view(self.num_enc_layers, -1)
             norm_weights = F.softmax(self.weights, dim=-1)
             
@@ -113,11 +114,13 @@ class CNNSelfAttention(nn.Module):
             features = weighted_feature.view(*origin_shape)
         
         # Pass the weighted average to point-wise 1D Conv
+        # B x T x D
         features = features.transpose(1, 2)
         features = self.model_seq(features)
         features = features.transpose(1, 2)
         
         # Convolution and pooling
+        # B x T x D
         if self.pooling_method == "att": features = self.pooling(features, mask).squeeze(-1)
         else: 
             if length is not None:
@@ -128,6 +131,7 @@ class CNNSelfAttention(nn.Module):
                 features = torch.mean(features, dim=1)
         
         # Output predictions
+        # B x D
         predicted = self.out_layer(features)
         return predicted
 

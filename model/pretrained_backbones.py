@@ -43,7 +43,6 @@ class Wav2Vec(nn.Module):
         )
 
         # setting require grad = true only if we want to fine tune the pretrained model
-        self.backbone_model.feature_extractor.training = False
         if not is_attack:
             for name, param in self.backbone_model.named_parameters(): param.requires_grad = False
         
@@ -55,6 +54,7 @@ class Wav2Vec(nn.Module):
                 x = x.transpose(1, 2) # New version of huggingface
                 x, _ = self.backbone_model.feature_projection(x) # New version of huggingface
         else:
+            self.backbone_model.feature_extractor.training = False
             x = self.backbone_model.feature_extractor(x)
             x = x.transpose(1, 2) # New version of huggingface
             x, _ = self.backbone_model.feature_projection(x) # New version of huggingface
@@ -276,6 +276,15 @@ class WhisperTiny(nn.Module):
             new_x = list()
             for idx in range(len(length)):
                 new_x.append(x[idx].detach().cpu().numpy())
+            
+            # Max length is max audio len in a batch
+            input_features = self.feature_extractor(
+                new_x,
+                return_tensors="pt", 
+                sampling_rate=16000,
+                max_length=max_audio_len
+            )
+            
             # Max length is max audio len in a batch
             # Return length
             length = self.get_feat_extract_output_lengths(length.detach().cpu())

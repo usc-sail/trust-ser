@@ -16,10 +16,9 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 
-sys.path.append(os.path.join(str(Path(os.path.realpath(__file__)).parents[2])))
-sys.path.append(os.path.join(str(Path(os.path.realpath(__file__)).parents[2]), 'model'))
-sys.path.append(os.path.join(str(Path(os.path.realpath(__file__)).parents[2]), 'experiment'))
-sys.path.append(os.path.join(str(Path(os.path.realpath(__file__)).parents[2]), 'dataloader'))
+sys.path.append(os.path.join(str(Path(os.path.realpath(__file__)).parents[1])))
+sys.path.append(os.path.join(str(Path(os.path.realpath(__file__)).parents[1]), 'model'))
+sys.path.append(os.path.join(str(Path(os.path.realpath(__file__)).parents[1]), 'dataloader'))
 
 from utils import parse_finetune_args, set_seed, log_epoch_result, log_best_result
 
@@ -37,7 +36,7 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# Model basic information
+# model basic information
 # Model hidden states information
 hid_dim_dict = {
     "wav2vec2_0":       768,
