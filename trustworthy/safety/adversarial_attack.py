@@ -79,7 +79,7 @@ def fgsm_attack(sound, data_grad):
     # Calculate the gradients
     sound_norm = np.sqrt(np.mean(np.square(sound.detach().cpu().numpy())))
     noise_rms = np.sqrt(np.mean(np.square(sign_data_grad.detach().cpu().numpy())))
-    desired_noise_rms = calculate_desired_noise_rms(sound_norm, snr=45)
+    desired_noise_rms = calculate_desired_noise_rms(sound_norm, snr=args.snr)
 
     # Adjust the noise to match the desired noise RMS
     noise_sound = sign_data_grad * (desired_noise_rms / noise_rms)
@@ -221,8 +221,8 @@ if __name__ == '__main__':
             f'lr{str(args.learning_rate).replace(".", "")}_ep{args.num_epochs}_{args.downstream_model}_conv{args.conv_layers}_hid{args.hidden_size}_{args.pooling}'
         )
         # Define attack dir
-        attack_dir = Path(args.privacy_attack_dir).joinpath(
-            args.attack_method, args.dataset, args.pretrain_model,
+        attack_dir = Path(args.attack_dir).joinpath(
+            args.attack_method, str(args.snr), args.dataset, args.pretrain_model,
             f'lr{str(args.learning_rate).replace(".", "")}_ep{args.num_epochs}_{args.downstream_model}_conv{args.conv_layers}_hid{args.hidden_size}_{args.pooling}'
         )
         Path.mkdir(attack_dir, parents=True, exist_ok=True)

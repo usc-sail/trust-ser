@@ -202,6 +202,13 @@ def parse_finetune_args():
     )
 
     parser.add_argument(
+        '--snr',
+        default=45,
+        type=int,
+        help="SNR of the audio",
+    )
+
+    parser.add_argument(
         '--conv_layers',
         default=3,
         type=int,
