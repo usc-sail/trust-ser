@@ -88,7 +88,8 @@ class EvalMetric(object):
 
     def statistical_parity(self):
         y_pred = np.array(self.pred_list)
-        p_attr = np.array(self.demo_list)
+        # p_attr = np.array(self.demo_list)
+        p_attr = np.array(self.speaker_list)
 
         statistical_parity = multiclass_statistical_parity(
             p_attr, y_pred, groups=None, classes=None, aggregation_fun="max"
@@ -98,7 +99,8 @@ class EvalMetric(object):
     def equality_of_opp(self):
         y_true = np.array(self.truth_list)
         y_pred = np.array(self.pred_list)
-        p_attr = np.array(self.demo_list)
+        # p_attr = np.array(self.demo_list)
+        p_attr = np.array(self.speaker_list)
 
         equality_of_opp = multiclass_equality_of_opp(
             p_attr, y_pred, y_true, groups=None, classes=None, aggregation_fun="max"

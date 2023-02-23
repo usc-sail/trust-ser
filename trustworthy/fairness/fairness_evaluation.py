@@ -1,4 +1,5 @@
 import json
+import yaml
 import torch
 import random
 import numpy as np
@@ -75,16 +76,16 @@ def validate_epoch(
 
     with torch.no_grad():
         for batch_idx, batch_data in enumerate(dataloader):
-            # read data
+            # Read data
             x, y = batch_data
             x, y = x.to(device), y.to(device)
             
-            # forward pass
+            # Forward pass
             feat = backbone_model(x, norm=args.norm)
             outputs = model(feat)
             outputs = torch.log_softmax(outputs, dim=1)
 
-            # read gender and speaker id
+            # Read gender and speaker id
             speaker_id = test_file_list[batch_idx][1]
             gender = test_file_list[batch_idx][2]
                         
@@ -108,14 +109,19 @@ def validate_epoch(
 
 if __name__ == '__main__':
 
-    # argument parser
+    # Argument parser
     args = parse_finetune_args()
+    with open("../../config/config.yml", "r") as stream: config = yaml.safe_load(stream)
+    args.split_dir      = str(Path(config["project_dir"]).joinpath("train_split"))
+    args.data_dir       = str(Path(config["project_dir"]).joinpath("audio"))
+    args.log_dir        = str(Path(config["project_dir"]).joinpath("finetune"))
+    args.fairness_dir   = str(Path(config["project_dir"]).joinpath("fairness"))
 
-    # find device
+    # Find device
     device = torch.device("cuda") if torch.cuda.is_available() else "cpu"
     if torch.cuda.is_available(): print('GPU available, use GPU')
     
-    # number of folds in the exp
+    # Number of folds in the exp
     if args.dataset == "msp-improv": total_folds = 7
     else: total_folds = 6
     
@@ -125,7 +131,7 @@ if __name__ == '__main__':
         
         # Read train/dev file list
         train_file_list, dev_file_list, test_file_list = load_finetune_audios(
-            args.split_dir, dataset=args.dataset, fold_idx=fold_idx
+            args.split_dir, audio_path=args.data_dir, dataset=args.dataset, fold_idx=fold_idx
         )
         
         # Set test dataloader

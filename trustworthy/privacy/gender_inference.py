@@ -1,4 +1,5 @@
 import json
+import yaml
 import torch
 import random
 import numpy as np
@@ -151,6 +152,11 @@ if __name__ == '__main__':
 
     # Argument parser
     args = parse_finetune_args()
+    with open("../../config/config.yml", "r") as stream: config = yaml.safe_load(stream)
+    args.split_dir      = str(Path(config["project_dir"]).joinpath("train_split"))
+    args.data_dir       = str(Path(config["project_dir"]).joinpath("audio"))
+    args.log_dir        = str(Path(config["project_dir"]).joinpath("finetune"))
+    args.attack_dir     = str(Path(config["project_dir"]).joinpath("privacy"))
 
     # Find device
     device = torch.device("cuda") if torch.cuda.is_available() else "cpu"

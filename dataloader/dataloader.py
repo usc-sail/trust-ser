@@ -336,6 +336,7 @@ def load_pretrain_audios(
 
 def load_finetune_audios(
     input_path:     str,
+    audio_path:     str,
     dataset:        str,
     fold_idx:       int
 ):

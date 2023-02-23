@@ -1,4 +1,5 @@
 import json
+import yaml
 import torch
 import random
 import torchaudio
@@ -198,6 +199,11 @@ if __name__ == '__main__':
 
     # Argument parser
     args = parse_finetune_args()
+    with open("../../config/config.yml", "r") as stream: config = yaml.safe_load(stream)
+    args.split_dir      = str(Path(config["project_dir"]).joinpath("train_split"))
+    args.data_dir       = str(Path(config["project_dir"]).joinpath("audio"))
+    args.log_dir        = str(Path(config["project_dir"]).joinpath("finetune"))
+    args.attack_dir     = str(Path(config["project_dir"]).joinpath("attack"))
 
     # Find device
     device = torch.device("cuda") if torch.cuda.is_available() else "cpu"
@@ -288,12 +294,12 @@ if __name__ == '__main__':
             )
             model = model.to(device)
         
-        test_result = validate_epoch(
+        attack_success_rate = validate_epoch(
             test_dataloader, model, device, split="Test"
         )
         
         result_dict[fold_idx] = dict()
-        result_dict[fold_idx]["attack_success_rate"] = test_result["attack_success_rate"]
+        result_dict[fold_idx]["attack_success_rate"] = attack_success_rate
         
         # save best results
         jsonString = json.dumps(result_dict, indent=4)

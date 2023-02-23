@@ -1,4 +1,5 @@
 import json
+import yaml
 import torch
 import random
 import numpy as np
@@ -150,6 +151,10 @@ if __name__ == '__main__':
 
     # Argument parser
     args = parse_finetune_args()
+    with open("../config/config.yml", "r") as stream: config = yaml.safe_load(stream)
+    args.split_dir  = str(Path(config["project_dir"]).joinpath("train_split"))
+    args.data_dir   = str(Path(config["project_dir"]).joinpath("audio"))
+    args.log_dir    = str(Path(config["project_dir"]).joinpath("finetune"))
 
     # Find device
     device = torch.device("cuda") if torch.cuda.is_available() else "cpu"
@@ -163,7 +168,7 @@ if __name__ == '__main__':
 
         # Read train/dev file list
         train_file_list, dev_file_list, test_file_list = load_finetune_audios(
-            args.split_dir, dataset=args.dataset, fold_idx=fold_idx
+            args.split_dir, audio_path=args.data_dir, dataset=args.dataset, fold_idx=fold_idx
         )
         # Read weights of training data
         weights = return_weights(
