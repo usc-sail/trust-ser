@@ -69,3 +69,29 @@ CUDA_VISIBLE_DEVICES=0 taskset -c 1-30 python3 finetune_single_thread.py --pretr
 # hidden_size: size of cnn
 # conv_layers: number of cnn layers
 ```
+
+## Trustworthy Evaluation
+### Fairness Evaluation
+To evaluate the fairness with a pretrained backbone and its downstream model, use the following:
+```
+cd trustworthy/fairness
+CUDA_VISIBLE_DEVICES=0 taskset -c 1-30 python3 fairness_evaluation.py --pretrain_model apc --dataset iemocap --learning_rate 0.0005 --downstream_model cnn --num_epochs 30 --num_layers 3 --conv_layers 2 --pooling mean --hidden_size 128
+```
+
+The output will be under: OUTPUT_PATH/fariness/iemocap
+The output metrics include: demographic disparity statistical_parity (Speaker-wise); equality of opportunity (Speaker-wise).
+
+The aggregation is based on the max, which means the worst case will be the output. The lower the metric, the better the fairness.
+
+### Safety Evaluation
+
+To evaluate the safety with a pretrained backbone and its downstream model, use the following:
+```
+cd trustworthy/safety
+CUDA_VISIBLE_DEVICES=0 taskset -c 1-30 python3 adversarial_attack.py --pretrain_model apc --dataset iemocap --learning_rate 0.0005 --downstream_model cnn --num_epochs 30 --num_layers 3 --conv_layers 2 --pooling mean --hidden_size 128 --attack_method fgsm -snr 45
+# attack_method: fgsm
+# snr: SNR of the input adversarial noise
+```
+
+The output will be under: OUTPUT_PATH/attack/iemocap
+The output metrics is attack success rate, and the higher the metric, the worse the safety.
