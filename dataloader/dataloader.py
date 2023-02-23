@@ -363,13 +363,11 @@ def load_finetune_audios(
             if include_for_finetune(data, dataset):
                 data[-1] = map_label(data, dataset)
                 if dataset == "iemocap_impro" and "impro" not in data[0]: continue
-                
-                audio_path = Path('/media/data/projects/speech-privacy/trust-ser/audio')
                 speaker_id, file_path  = data[1], data[3]
                 if dataset in ['iemocap', 'msp-improv', 'meld', 'crema_d', 'msp-podcast']:
-                    output_path = audio_path.joinpath(dataset, file_path.split('/')[-1])
+                    output_path = Path(audio_path).joinpath(dataset, file_path.split('/')[-1])
                 elif dataset in ['ravdess', 'emov_db', 'vox-movie']:
-                    output_path = audio_path.joinpath(dataset, f'{speaker_id}_{file_path.split("/")[-1]}')
+                    output_path = Path(audio_path).joinpath(dataset, f'{speaker_id}_{file_path.split("/")[-1]}')
                 data[3] = str(output_path)
                 if split == 'train': train_file_list.append(data)
                 elif split == 'dev': dev_file_list.append(data)
