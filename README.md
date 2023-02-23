@@ -71,7 +71,7 @@ CUDA_VISIBLE_DEVICES=0 taskset -c 1-30 python3 finetune_single_thread.py --pretr
 ```
 
 ## Trustworthy Evaluation
-### Fairness Evaluation
+### 1.Fairness Evaluation
 To evaluate the fairness with a pretrained backbone and its downstream model, use the following:
 ```
 cd trustworthy/fairness
@@ -83,7 +83,7 @@ The output metrics include: demographic disparity statistical_parity (Speaker-wi
 
 The aggregation is based on the max, which means the worst case will be the output. The lower the metric, the better the fairness.
 
-### Safety Evaluation
+### 2.Safety Evaluation
 
 To evaluate the safety with a pretrained backbone and its downstream model, use the following:
 ```
