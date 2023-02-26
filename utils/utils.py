@@ -131,20 +131,26 @@ def parse_finetune_args():
     )
 
     parser.add_argument(
+        '--fairness_dir', 
+        default='/media/data/projects/speech-privacy/trust-ser/fairness',
+        type=str, 
+        help='model save path'
+    )
+
+    parser.add_argument(
+        '--sustainability_dir', 
+        default='/media/data/projects/speech-privacy/trust-ser/sustainability',
+        type=str, 
+        help='model save path'
+    )
+    
+    parser.add_argument(
         '--attack_method', 
         default='pgd',
         type=str, 
         help='attack method'
     )
 
-    parser.add_argument(
-        '--fairness_dir', 
-        default='/media/data/projects/speech-privacy/trust-ser/fairness',
-        type=str, 
-        help='model save path'
-    )
-    
-    
     parser.add_argument(
         '--pretrain_model', 
         default='wav2vec2_0',

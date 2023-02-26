@@ -419,6 +419,41 @@ def return_weights(
     weights = weights / weights.sum()
     return weights
 
+def return_dataset_stats(
+    input_path:     str,
+    dataset:        str,
+    fold_idx:       int
+):
+    """
+    Return training weights.
+    :param input_path:  Input data path
+    :param dataset:     Dataset name
+    :param fold_idx:    Fold idx
+    :return weights:    Class weights
+    """
+    train_file_list = list()
+    if dataset in ["iemocap_impro"]:
+        with open(str(Path(input_path).joinpath(f'iemocap_fold{fold_idx}.json')), "r") as f:
+            split_dict = json.load(f)
+    elif dataset in ["crema_d_complete"]:
+        with open(str(Path(input_path).joinpath(f'crema_d_fold{fold_idx}.json')), "r") as f:
+            split_dict = json.load(f)
+    elif dataset in ["msp-podcast"]:
+        with open(str(Path(input_path).joinpath(f'{dataset}.json')), "r") as f:
+            split_dict = json.load(f)
+    else:
+        with open(str(Path(input_path).joinpath(f'{dataset}_fold{fold_idx}.json')), "r") as f:
+            split_dict = json.load(f)
+    
+    for split in ["train", "dev", "test"]:
+        for data in split_dict[split]:
+            if include_for_finetune(data, dataset):
+                data[-1] = map_label(data, dataset)
+                train_file_list.append(data)
+            
+    # logging train file nums
+    log_dataset_details(train_file_list, split='train', dataset=dataset)
+
 def return_speakers(
     input_file_list:    list
 ):
