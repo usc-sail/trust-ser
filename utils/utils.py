@@ -157,6 +157,13 @@ def parse_finetune_args():
         type=str,
         help="pretrained model type"
     )
+
+    parser.add_argument(
+        '--finetune', 
+        default='frozen',
+        type=str,
+        help="partial finetune or not"
+    )
     
     parser.add_argument(
         '--learning_rate', 

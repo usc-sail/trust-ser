@@ -33,7 +33,7 @@ def mel_filters(device, n_mels: int = 80) -> torch.Tensor:
         return torch.from_numpy(f[f"mel_{n_mels}"]).to(device)
 
 class Wav2Vec(nn.Module):
-    def __init__(self, is_attack=False):
+    def __init__(self, is_attack=False, requires_grad=False):
         super(Wav2Vec, self).__init__()
         
         # First we take the pretrained xlsr model
@@ -41,10 +41,7 @@ class Wav2Vec(nn.Module):
             "facebook/wav2vec2-base-960h",
             output_hidden_states=True
         )
-
-        # setting require grad = true only if we want to fine tune the pretrained model
-        if not is_attack:
-            for name, param in self.backbone_model.named_parameters(): param.requires_grad = False
+        for name, param in self.backbone_model.named_parameters(): param.requires_grad = requires_grad
         
     def forward(self, x, norm="nonorm", length=None, is_attack=False):
         # 1. feature extraction and projections

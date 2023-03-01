@@ -226,7 +226,7 @@ if __name__ == '__main__':
 
         # Read train/dev file list
         train_file_list, dev_file_list, test_file_list = load_finetune_audios(
-            args.split_dir, dataset=args.dataset, fold_idx=fold_idx
+            args.split_dir, audio_path=args.data_dir, dataset=args.dataset, fold_idx=fold_idx
         )
         
         test_dataloader = set_finetune_dataloader(

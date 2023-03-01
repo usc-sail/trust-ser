@@ -114,7 +114,7 @@ def validate_epoch(
         input_data = torch.randn(input_size).cuda()
         downstream_flops, downstream_params = thop.profile(model, inputs=(input_data,))
         flops = (flops+downstream_flops) / 1e9  # Convert FLOPs to GFLOPs
-    return flops
+    return flops, params
 
 if __name__ == '__main__':
 
@@ -207,12 +207,13 @@ if __name__ == '__main__':
             model = model.to(device)
         
         # Perform test
-        gflops = validate_epoch(
+        gflops, params = validate_epoch(
             model, device, split="Test"
         )
 
         flops_res_dict[fold_idx] = dict()
         flops_res_dict[fold_idx]["flops"] = gflops
+        flops_res_dict[fold_idx]["params"] = params / 1e6
         
         # Save fairness results
         jsonString = json.dumps(flops_res_dict, indent=4)
