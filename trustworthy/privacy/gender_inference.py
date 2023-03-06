@@ -84,7 +84,8 @@ def train_epoch(
         x, y, length = x.to(device), y.to(device), length.to(device)
         
         # Forward pass
-        feat, length, mask = backbone_model(x, norm=args.norm, length=length)
+        with torch.no_grad():
+            feat, length, mask = backbone_model(x, norm=args.norm, length=length)
         outputs = model(feat, length, mask)
         outputs = torch.log_softmax(outputs, dim=1)
                     
@@ -182,10 +183,17 @@ if __name__ == '__main__':
             args, test_file_list, is_train=False
         )
 
+        # Log/model dir
+        log_dir = Path(args.log_dir).joinpath(
+            args.dataset, 
+            args.pretrain_model,
+            f'lr{str(args.learning_rate).replace(".", "")}_ep{args.num_epochs}_{args.downstream_model}_conv{args.conv_layers}_hid{args.hidden_size}_{args.pooling}_{args.finetune}'
+        )
+        
         # Define attack dir
         attack_dir = Path(args.attack_dir).joinpath(
             args.privacy_attack, args.dataset, args.pretrain_model,
-            f'lr{str(args.learning_rate).replace(".", "")}_ep{args.num_epochs}_{args.downstream_model}_conv{args.conv_layers}_hid{args.hidden_size}_{args.pooling}'
+            f'lr{str(args.learning_rate).replace(".", "")}_ep{args.num_epochs}_{args.downstream_model}_conv{args.conv_layers}_hid{args.hidden_size}_{args.pooling}_{args.finetune}'
         )
         Path.mkdir(attack_dir, parents=True, exist_ok=True)
         
@@ -225,6 +233,12 @@ if __name__ == '__main__':
                 num_enc_layers=num_enc_layers_dict[args.pretrain_model], 
                 pooling_method=args.pooling
             ).to(device)
+            
+        if args.finetune != "frozen":
+            backbone_model.load_state_dict(
+                torch.load(str(log_dir.joinpath(f'fold_{fold_idx}_backbone.pt'))), 
+                strict=False
+            )
         
         # Read trainable params
         model_parameters = filter(lambda p: p.requires_grad, model.parameters())
@@ -234,7 +248,7 @@ if __name__ == '__main__':
         # Define optimizer
         optimizer = torch.optim.Adam(
             filter(lambda p: p.requires_grad, model.parameters()), 
-            lr=args.learning_rate, 
+            lr=0.0005, 
             weight_decay=1e-4,
             betas=(0.9, 0.98)
         )
@@ -249,7 +263,7 @@ if __name__ == '__main__':
         best_dev_acc, best_test_acc = 0, 0
         
         result_hist_dict = dict()
-        for epoch in range(args.num_epochs):
+        for epoch in range(10):
             train_result = train_epoch(
                 train_dataloader, model, device, optimizer
             )

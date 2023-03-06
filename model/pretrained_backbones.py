@@ -183,7 +183,7 @@ class TERA(nn.Module):
 
 
 class WavLM(nn.Module):
-    def __init__(self, is_attack=False):
+    def __init__(self, is_attack=False, finetune="frozen"):
         super(WavLM, self).__init__()
         
         # First we take the pretrained xlsr model
@@ -191,12 +191,23 @@ class WavLM(nn.Module):
             "microsoft/wavlm-base-plus",
             output_hidden_states=True
         )
+        self.finetune = finetune
         # setting require grad = true only if we want to fine tune the pretrained model
-        if not is_attack:
-            for name, param in self.backbone_model.named_parameters(): param.requires_grad = False
+        if is_attack:
+            for name, param in self.backbone_model.named_parameters(): param.requires_grad = True
+        else:
+            if finetune == "frozen": 
+                for name, param in self.backbone_model.named_parameters(): param.requires_grad = False
+            elif finetune == "unfrozen_last_layer":
+                for name, param in self.backbone_model.named_parameters(): 
+                    if "layers.11" in name: param.requires_grad = True
+                    else: param.requires_grad = False
+            elif finetune == "unfrozen":
+                for name, param in self.backbone_model.encoder.named_parameters(): 
+                    param.requires_grad = True
         
     def forward(self, x, norm="nonorm", length=None, is_attack=False):
-        # 1. feature extraction and projections
+        # 1. Feature extraction and projections
         if not is_attack:
             with torch.no_grad():
                 x = self.backbone_model.feature_extractor(x)
@@ -217,15 +228,18 @@ class WavLM(nn.Module):
             length, mask = length.cuda(), mask.cuda()
         # 3. transformer encoding features
         if not is_attack:
-            with torch.no_grad():
+            if self.finetune == "frozen": 
+                with torch.no_grad():
+                    feat = self.backbone_model.encoder(
+                        x, attention_mask=mask, output_hidden_states=True
+                    ).hidden_states
+            else:
                 feat = self.backbone_model.encoder(
-                    x, attention_mask=mask, 
-                    output_hidden_states=True
+                    x, attention_mask=mask, output_hidden_states=True
                 ).hidden_states
         else:
             feat = self.backbone_model.encoder(
-                x, attention_mask=mask, 
-                output_hidden_states=True
+                x, attention_mask=mask, output_hidden_states=True
             ).hidden_states
         
         # 4. stacked feature
@@ -249,17 +263,31 @@ class WavLM(nn.Module):
 
 
 class WhisperTiny(nn.Module):
-    def __init__(self, is_attack=False):
+    def __init__(self, is_attack=False, finetune="frozen"):
         super(WhisperTiny, self).__init__()
         
         # First we take the pretrained model
         self.backbone_model = WhisperModel.from_pretrained("openai/whisper-tiny")
         self.feature_extractor = AutoFeatureExtractor.from_pretrained("openai/whisper-tiny")
         self.embed_positions = copy.deepcopy(self.backbone_model.encoder.embed_positions.weight)
+        self.finetune = finetune
         
         # setting require grad = true only if we want to fine tune the pretrained model
         # if not is_attack:
-        for name, param in self.backbone_model.named_parameters(): param.requires_grad = False
+        if finetune == "frozen": 
+            for name, param in self.backbone_model.named_parameters(): param.requires_grad = False
+        elif finetune == "unfrozen_last_layer":
+            # We train the transformer but not the positional embeddings and conv layers
+            for name, param in self.backbone_model.encoder.named_parameters(): 
+                if "layers.3" in name: param.requires_grad = True
+                else: param.requires_grad = False
+            self.backbone_model.encoder.embed_positions.requires_grad = False
+        elif finetune == "unfrozen":
+            # We train the transformer but not the positional embeddings and conv layers
+            for name, param in self.backbone_model.encoder.named_parameters(): 
+                if "encoder.conv" in name: param.requires_grad = False
+                else: param.requires_grad = True
+            self.backbone_model.encoder.embed_positions.requires_grad = False
         
     def forward(self, x, input_features=None, norm="nonorm", length=None, is_attack=False):
         
@@ -290,7 +318,13 @@ class WhisperTiny(nn.Module):
             # Replace positional embeddings
             self.backbone_model.encoder.embed_positions = self.backbone_model.encoder.embed_positions.from_pretrained(self.embed_positions[:max_len])
             
-            with torch.no_grad():
+            if self.finetune == "frozen": 
+                with torch.no_grad():
+                    feat = self.backbone_model.encoder(
+                        input_features.input_features.cuda(), 
+                        output_hidden_states=True
+                    ).hidden_states
+            else:
                 feat = self.backbone_model.encoder(
                     input_features.input_features.cuda(),
                     output_hidden_states=True

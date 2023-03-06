@@ -143,14 +143,14 @@ if __name__ == '__main__':
         log_dir = Path(args.log_dir).joinpath(
             args.dataset, 
             args.pretrain_model,
-            f'lr{str(args.learning_rate).replace(".", "")}_ep{args.num_epochs}_{args.downstream_model}_conv{args.conv_layers}_hid{args.hidden_size}_{args.pooling}'
+            f'lr{str(args.learning_rate).replace(".", "")}_ep{args.num_epochs}_{args.downstream_model}_conv{args.conv_layers}_hid{args.hidden_size}_{args.pooling}_{args.finetune}'
         )
 
         # Fairness dir
         fairness_dir = Path(args.fairness_dir).joinpath(
             args.dataset, 
             args.pretrain_model,
-            f'lr{str(args.learning_rate).replace(".", "")}_ep{args.num_epochs}_{args.downstream_model}_conv{args.conv_layers}_hid{args.hidden_size}_{args.pooling}'
+            f'lr{str(args.learning_rate).replace(".", "")}_ep{args.num_epochs}_{args.downstream_model}_conv{args.conv_layers}_hid{args.hidden_size}_{args.pooling}_{args.finetune}'
         )
         Path.mkdir(fairness_dir, parents=True, exist_ok=True)
 
@@ -198,6 +198,12 @@ if __name__ == '__main__':
                 strict=False
             )
             model = model.to(device)
+            
+            if args.finetune != "frozen":
+                backbone_model.load_state_dict(
+                    torch.load(str(log_dir.joinpath(f'fold_{fold_idx}_backbone.pt'))), 
+                    strict=False
+                )
         
         # Perform test
         demographic_parity, statistical_parity, equality_of_opp = validate_epoch(

@@ -190,7 +190,7 @@ if __name__ == '__main__':
         log_dir = Path(args.log_dir).joinpath(
             args.dataset, 
             args.pretrain_model,
-            f'lr{str(args.learning_rate).replace(".", "")}_ep{args.num_epochs}_{args.downstream_model}_conv{args.conv_layers}_hid{args.hidden_size}_{args.pooling}'
+            f'lr{str(args.learning_rate).replace(".", "")}_ep{args.num_epochs}_{args.downstream_model}_conv{args.conv_layers}_hid{args.hidden_size}_{args.pooling}_{args.finetune}'
         )
         Path.mkdir(log_dir, parents=True, exist_ok=True)
         
@@ -209,10 +209,10 @@ if __name__ == '__main__':
             backbone_model = TERA().to(device)
         elif args.pretrain_model == "wavlm":
             # Wavlm wrapper from huggingface
-            backbone_model = WavLM().to(device)
+            backbone_model = WavLM(finetune=args.finetune).to(device)
         elif args.pretrain_model == "whisper_tiny":
             # Whisper tiny wrapper from huggingface
-            backbone_model = WhisperTiny().to(device)
+            backbone_model = WhisperTiny(finetune=args.finetune).to(device)
         elif args.pretrain_model == "whisper_base":
             # Whisper base wrapper from huggingface
             backbone_model = WhisperBase().to(device)
@@ -238,13 +238,13 @@ if __name__ == '__main__':
             ).to(device)
         
         # Read trainable params
-        model_parameters = filter(lambda p: p.requires_grad, model.parameters())
+        model_parameters = list(filter(lambda p: p.requires_grad, model.parameters())) + list(filter(lambda p: p.requires_grad, backbone_model.parameters()))
         params = sum([np.prod(p.size()) for p in model_parameters])
         logging.info(f'Trainable params size: {params/(1024*1024):.2f} M')
         
         # Define optimizer
         optimizer = torch.optim.Adam(
-            filter(lambda p: p.requires_grad, model.parameters()), 
+            list(filter(lambda p: p.requires_grad, model.parameters())) + list(filter(lambda p: p.requires_grad, backbone_model.parameters())),
             lr=args.learning_rate, 
             weight_decay=1e-4,
             betas=(0.9, 0.98)
@@ -280,6 +280,11 @@ if __name__ == '__main__':
                 best_test_acc = test_result["acc"]
                 best_epoch = epoch
                 torch.save(model.state_dict(), str(log_dir.joinpath(f'fold_{fold_idx}.pt')))
+
+                if "whisper" in args.pretrain_model:
+                    # Copy back the positional embedding
+                    backbone_model.backbone_model.encoder.embed_positions = backbone_model.backbone_model.encoder.embed_positions.from_pretrained(backbone_model.embed_positions)
+                    torch.save(backbone_model.state_dict(), str(log_dir.joinpath(f'fold_{fold_idx}_backbone.pt')))
             
             logging.info(f'-------------------------------------------------------------------')
             logging.info(f"Fold {fold_idx} - Best train epoch {best_epoch}, best dev UAR {best_dev_uar:.2f}%, best test UAR {best_test_uar:.2f}%")

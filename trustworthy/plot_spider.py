@@ -77,13 +77,13 @@ class ComplexRadar():
 
         # N = len(variables)
         # angles = [n / float(N) * 2 * pi for n in range(N)]
-        axes = [fig.add_axes([0.25, 0.0, 0.58, 0.85], polar=True, label = "axes{}".format(i)) for i in range(len(variables))]
-        l, text = axes[0].set_thetagrids(angles, labels=[f'{variables[0]}(%)', f'{variables[1]}\n(1e9)', f'{variables[2]}\n(%)', f'{variables[3]}\n(%)', f'{variables[4]}\n(%)'])
+        axes = [fig.add_axes([0.2, -0.02, 0.6, 0.95], polar=True, label = "axes{}".format(i)) for i in range(len(variables))]
+        l, text = axes[0].set_thetagrids(angles, labels=[f'{variables[0]}(%)', f'{variables[1]}\n(%)', f'{variables[2]}\n(1e9)', f'{variables[3]}\n(%)', f'{variables[4]}\n(%)'])
         [txt.set_rotation(angle-90) for txt, angle in zip(text, angles)]
 
-        label_positions = [(0, -0.05), (0, -0.35), (0, -0.15), (0, -0.15), (0, -0.25)]
+        label_positions = [(0, -0.05), (0, -0.2), (-100, -0.23), (0, -0.2), (0, -0.25)]
         [text[i].set_position(label_positions[i]) for i in range(len(text))]
-        [text[i].set_fontsize(15.5) for i in range(len(text))]
+        [text[i].set_fontsize(17.5) for i in range(len(text))]
         [text[i].set_fontweight("bold") for i in range(len(text))]
         
         for ax in axes[1:]:
@@ -92,9 +92,9 @@ class ComplexRadar():
             ax.grid("off")
             
         labels = [
-            ["", "60", "64", "68", "72"],
+            ["", "59", "62", "65", "68"],
             ["", "36", "24", "12", "0"],
-            ["", "25", "20", "15", "10"],
+            ["", "21", "18", "15", "12"],
             ["", "85", "70", "55", "40"],
             ["", "97", "94", "91", "88",]
         ]
@@ -113,7 +113,7 @@ class ComplexRadar():
             ax.set_yticklabels(labels[i])
 
             for label in (ax.get_yticklabels()):
-                label.set_fontsize(11)
+                label.set_fontsize(13)
                 label.set_fontweight('bold')
                 
         # variables for plotting
@@ -139,8 +139,8 @@ for row in range(len(model_names)):
     values = df.loc[df.index[row]].values.flatten().tolist()
     ranges = [(0, 100), (0, 100), (0, 100), (0, 100), (0, 100), (0, 100)]
 
-    max_list = [72, 48, 30, 100, 100]
-    min_list = [56, 0, 10, 40, 88]
+    max_list = [68, 24, 48, 100, 100]
+    min_list = [56, 12, 0, 40, 88]
 
     for cat_idx in range(len(categories)):
         max_num, min_num = max_list[cat_idx], min_list[cat_idx]
@@ -148,15 +148,15 @@ for row in range(len(model_names)):
         else: values[cat_idx] = 100-100*(values[cat_idx] - min_num) / (max_num - min_num)
 
     # Plotting
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#008080']
     my_palette = ListedColormap(colors)
 
-    fig1 = plt.figure(figsize=(6.5, 5.5))
+    fig1 = plt.figure(figsize=(6, 5.25))
     # fig.subplots_adjust(wspace=-0.5, hspace=-0.5)
     radar = ComplexRadar(fig1, categories, ranges, color=colors[row])
     radar.plot(values)
     radar.fill(values, alpha=0.2)
 
     plt.title(df.index[row], size=24, color=colors[row], y=1.15, weight="bold")
-    plt.savefig(f'trust_profile/{model_names[row]}.png', dpi=300)
+    plt.savefig(f'trust_profile/{model_names[row].replace(" ", "_")}.png', dpi=300, bbox_inches='tight', pad_inches=0)
     plt.close()
