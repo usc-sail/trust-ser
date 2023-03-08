@@ -1,9 +1,12 @@
 import pdb
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import matplotlib.pyplot as plt
-import seaborn as sns # improves plot aesthetics
+
+from matplotlib.patches import Patch
 from matplotlib.colors import ListedColormap
+
 
 from math import pi
 
@@ -93,9 +96,9 @@ class ComplexRadar():
             
         labels = [
             ["", "59", "62", "65", "68"],
-            ["", "36", "24", "12", "0"],
             ["", "21", "18", "15", "12"],
-            ["", "85", "70", "55", "40"],
+            ["", "36", "24", "12", "0"],
+            ["", "88", "76", "64", "52"],
             ["", "97", "94", "91", "88",]
         ]
 
@@ -122,12 +125,12 @@ class ComplexRadar():
         self.ax = axes[0]
         self.color = color
         
-    def plot(self, data, *args, **kw):
+    def plot(self, data, color, *args, **kw):
         sdata = _scale_data(data, self.ranges)
-        self.ax.plot(self.angle, np.r_[sdata, sdata[0]], color=self.color, *args, **kw)
-    def fill(self, data, *args, **kw):
+        self.ax.plot(self.angle, np.r_[sdata, sdata[0]], color=color, *args, **kw)
+    def fill(self, data, color, *args, **kw):
         sdata = _scale_data(data, self.ranges)
-        self.ax.fill(self.angle, np.r_[sdata, sdata[0]], color=self.color, *args, **kw)
+        self.ax.fill(self.angle, np.r_[sdata, sdata[0]], color=color, *args, **kw)
 
 # Set data
 df = pd.read_csv("summary.csv", index_col=0)
@@ -135,7 +138,7 @@ df = pd.read_csv("summary.csv", index_col=0)
 categories = list(df.columns)
 model_names = list(df.index)
 
-for row in range(len(model_names)):
+for row in range(len(model_names[:-1])):
     values = df.loc[df.index[row]].values.flatten().tolist()
     ranges = [(0, 100), (0, 100), (0, 100), (0, 100), (0, 100), (0, 100)]
 
@@ -154,9 +157,48 @@ for row in range(len(model_names)):
     fig1 = plt.figure(figsize=(6, 5.25))
     # fig.subplots_adjust(wspace=-0.5, hspace=-0.5)
     radar = ComplexRadar(fig1, categories, ranges, color=colors[row])
-    radar.plot(values)
-    radar.fill(values, alpha=0.2)
-
+    radar.plot(values, color=colors[row])
+    radar.fill(values, color=colors[row], alpha=0.2)
+    
     plt.title(df.index[row], size=24, color=colors[row], y=1.15, weight="bold")
     plt.savefig(f'trust_profile/{model_names[row].replace(" ", "_")}.png', dpi=300, bbox_inches='tight', pad_inches=0)
     plt.close()
+
+
+df = pd.read_csv("summary.csv", index_col=0)
+df = df.loc[["Whisper Tiny", "Whisper Tiny-FT"], :]
+
+categories = list(df.columns)
+model_names = list(df.index)
+ranges = [(0, 100), (0, 100), (0, 100), (0, 100), (0, 100), (0, 100)]
+
+fig1 = plt.figure(figsize=(6, 5.25), linewidth=8, edgecolor='black')
+radar = ComplexRadar(fig1, categories, ranges, color=colors[row])
+    
+for row in range(len(model_names)):
+    values = df.loc[df.index[row]].values.flatten().tolist()
+    ranges = [(0, 100), (0, 100), (0, 100), (0, 100), (0, 100), (0, 100)]
+
+    max_list = [68, 24, 48, 100, 100]
+    min_list = [56, 12, 0, 40, 88]
+
+    for cat_idx in range(len(categories)):
+        max_num, min_num = max_list[cat_idx], min_list[cat_idx]
+        if cat_idx == 0: values[cat_idx] = 100*(values[cat_idx] - min_num) / (max_num - min_num)
+        else: values[cat_idx] = 100-100*(values[cat_idx] - min_num) / (max_num - min_num)
+
+    # Plotting
+    colors = ['#2ca02c', '#e74c3c']
+    my_palette = ListedColormap(colors)
+
+    # fig.subplots_adjust(wspace=-0.5, hspace=-0.5)
+    radar.plot(values, color=colors[row])
+    radar.fill(values, color=colors[row], alpha=0.2)
+
+plt.title("Whisper Tiny\nFrozen vs. FT Last Layer", size=20, color='black', y=1.15, weight="bold")
+legend_elements = [Patch(facecolor=colors[0], edgecolor=colors[0], label='Frozen', alpha=0.4),
+                   Patch(facecolor=colors[1], edgecolor=colors[1], label='FT Last Layer', alpha=0.4)]
+
+plt.legend(handles=legend_elements, prop={'weight':'bold', 'size': 10.75}, bbox_to_anchor=(1.3, 1.05))
+plt.savefig(f'trust_profile/Compare.png', dpi=300, bbox_inches='tight', pad_inches=0.075)
+plt.close()

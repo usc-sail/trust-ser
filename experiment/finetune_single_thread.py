@@ -284,7 +284,7 @@ if __name__ == '__main__':
                 if "whisper" in args.pretrain_model:
                     # Copy back the positional embedding
                     backbone_model.backbone_model.encoder.embed_positions = backbone_model.backbone_model.encoder.embed_positions.from_pretrained(backbone_model.embed_positions)
-                    torch.save(backbone_model.state_dict(), str(log_dir.joinpath(f'fold_{fold_idx}_backbone.pt')))
+                if args.finetune != "frozen": torch.save(backbone_model.state_dict(), str(log_dir.joinpath(f'fold_{fold_idx}_backbone.pt')))
             
             logging.info(f'-------------------------------------------------------------------')
             logging.info(f"Fold {fold_idx} - Best train epoch {best_epoch}, best dev UAR {best_dev_uar:.2f}%, best test UAR {best_test_uar:.2f}%")
