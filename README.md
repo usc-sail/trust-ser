@@ -1,7 +1,7 @@
 # Trustworthy Speech Emotion Recognition
 #### Trust-SER is an open source project for researchers exploring SER applications with trustworthiness elements
 
-The core elements for Trustworthy Speech Emotion Recognition:
+The core elements for Trustworthy Speech Emotion Recognition (The figure uses images from https://openmoji.org/):
 
 <div align="center">
  <img src="img/trustworthy-ser.png" width="500px">
