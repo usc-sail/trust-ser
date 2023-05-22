@@ -7,6 +7,16 @@ The core elements for Trustworthy Speech Emotion Recognition:
  <img src="img/trustworthy-ser.png" width="500px">
 </div>
 
+### Our framework support popular pre-trained speech models:
+
+1. APC
+2. TERA
+3. Wav2vec 2.0
+4. WavLM Base+
+5. Whisper Tiny
+6. Whisper Base
+7. Whisper Small
+
 To begin with, please clone this repo:
 ```
 git clone git@github.com:usc-sail/trust-ser.git
