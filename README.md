@@ -4,7 +4,7 @@
 The core elements for Trustworthy Speech Emotion Recognition:
 
 <div align="center">
- <img src="img/trustworthy-ser.png" width="750px">
+ <img src="img/trustworthy-ser.png" width="500px">
 </div>
 
 To begin with, please clone this repo:
