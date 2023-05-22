@@ -95,3 +95,12 @@ CUDA_VISIBLE_DEVICES=0 taskset -c 1-30 python3 adversarial_attack.py --pretrain_
 
 The output will be under: OUTPUT_PATH/attack/iemocap
 The output metrics is attack success rate, and the higher the metric, the worse the safety.
+
+### 3.Privacy (Speaker recognition TBA)
+
+```
+CUDA_VISIBLE_DEVICES=0, taskset -c 90-120 python3 gender_inference.py --pretrain_model $pretrain_model --dataset $dataset --learning_rate 0.00005 --downstream_model cnn --num_epochs 10 --num_layers 3 --conv_layers 2 --pooling mean --hidden_size 128 --privacy_attack gender
+```
+
+The output will be under: OUTPUT_PATH/privacy/gender/iemocap
+The output metrics is gender prediction accuracy, and the higher the metric, the worse the privacy (We are adding the support for speaker recognition).
